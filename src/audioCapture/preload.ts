@@ -18,6 +18,12 @@ ipcRenderer.on(
   }
 );
 
+// The handlers above wire each browser view up individually, this handles the
+// case where they are all removed at once
+ipcRenderer.on("AUDIO_CAPTURE_STOP_ALL_BROWSER_VIEW_STREAMS", () => {
+  audioCaptureManager.stopAllBrowserViewStreams();
+});
+
 ipcRenderer.on(
   "AUDIO_CAPTURE_BROWSER_VIEW_MUTED",
   (_, viewId: number, muted: boolean) => {
