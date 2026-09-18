@@ -1,0 +1,184 @@
+name: Release Kenku FM - Windows x64 (manual)
+
+# Manually triggered release for Windows x64 only.
+#
+# It bumps the version in package.json (patch / minor / major), builds the app,
+# creates the Squirrel installer plus a portable zip, and publishes them as a
+# GitHub Release. The version commit and the `v<version>` tag are only pushed
+# once the build has succeeded, so a failed build leaves the repo untouched.
+#
+# Code signing (DigiCert) is not used here, so the installer is unsigned and
+# Windows SmartScreen will warn on first run. Widevine (castlabs EVS) signing is
+# applied automatically when the CASTLABS_ACCOUNT_NAME / CASTLABS_ACCOUNT_PASSWORD
+# secrets exist; without them DRM protected audio sources will not play.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: "Mark the release as a pre-release"
+        required: false
+        default: false
+        type: boolean
+      draft:
+        description: "Create the release as a draft"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-x64
+  cancel-in-progress: false
+
+jobs:
+  win-x64-release:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CASTLABS_ACCOUNT_NAME: ${{ secrets.CASTLABS_ACCOUNT_NAME }}
+      CASTLABS_ACCOUNT_PASSWORD: ${{ secrets.CASTLABS_ACCOUNT_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node Config
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: "yarn"
+
+      - name: Bump Version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          VERSION=$(node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const [major, minor, patch] = pkg.version.split(".").map(Number);
+            const next = {
+              major: [major + 1, 0, 0],
+              minor: [major, minor + 1, 0],
+              patch: [major, minor, patch + 1],
+            }[process.env.BUMP];
+            pkg.version = next.join(".");
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+            process.stdout.write(pkg.version);
+          ')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version $VERSION"
+
+      - name: Check Tag Is Free
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists"
+            exit 1
+          fi
+
+      - name: Install Dependencies
+        run: yarn install --non-interactive --frozen-lockfile
+
+      - name: Package App
+        run: yarn run package
+
+      - name: Setup Python
+        if: env.CASTLABS_ACCOUNT_NAME != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Widevine Python Module
+        if: env.CASTLABS_ACCOUNT_NAME != ''
+        run: |
+          python -m pip install cryptography==46.0.3
+          python -m pip install --upgrade castlabs-evs
+
+      - name: Widevine Signature
+        if: env.CASTLABS_ACCOUNT_NAME != ''
+        run: |
+          python -m castlabs_evs.account -n reauth -A "$CASTLABS_ACCOUNT_NAME" -P "$CASTLABS_ACCOUNT_PASSWORD"
+          python -m castlabs_evs.vmp sign-pkg "./out/Kenku FM-win32-x64"
+
+      - name: Create Installer
+        run: |
+          yarn install --non-interactive --frozen-lockfile --cwd ./publish/windows
+
+          node ./publish/windows/make-unsigned.js ${{ steps.version.outputs.version }}
+
+      - name: Create Portable Zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "out/Kenku FM-win32-x64/*" -DestinationPath "out/windows/kenku-fm-win32-x64-${{ steps.version.outputs.version }}-portable.zip"
+
+      - name: Rename RELEASES Manifest
+        run: mv ./out/windows/RELEASES ./out/windows/RELEASES-x64
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kenku-fm-win32-x64-${{ steps.version.outputs.version }}
+          path: |
+            out/windows/kenku-fm-win32-x64-${{ steps.version.outputs.version }}.exe
+            out/windows/kenku-fm-win32-x64-${{ steps.version.outputs.version }}-full.nupkg
+            out/windows/kenku-fm-win32-x64-${{ steps.version.outputs.version }}-portable.zip
+            out/windows/RELEASES-x64
+          if-no-files-found: error
+
+      - name: Commit And Tag Version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "Release ${{ steps.version.outputs.tag }} [skip ci]"
+          git tag -a ${{ steps.version.outputs.tag }} -m "Kenku FM ${{ steps.version.outputs.version }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin ${{ steps.version.outputs.tag }}
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          NOTES=$(printf '%s\n' \
+            "Windows x64 build of Kenku FM $VERSION." \
+            "" \
+            "| File | Use |" \
+            "| --- | --- |" \
+            "| \`kenku-fm-win32-x64-$VERSION.exe\` | Installer — download and run this one |" \
+            "| \`kenku-fm-win32-x64-$VERSION-portable.zip\` | Portable build, unzip and run \`kenku-fm.exe\` |" \
+            "| \`kenku-fm-win32-x64-$VERSION-full.nupkg\`, \`RELEASES-x64\` | Squirrel auto-update files |" \
+            "" \
+            "This build is not code signed, so Windows SmartScreen will show a warning on first run (More info → Run anyway).")
+
+          gh release create "$TAG" \
+            --title "Kenku FM $VERSION (Windows x64)" \
+            --notes "$NOTES" \
+            --generate-notes \
+            ${{ inputs.draft && '--draft' || '' }} \
+            ${{ inputs.prerelease && '--prerelease' || '' }} \
+            "./out/windows/kenku-fm-win32-x64-$VERSION.exe" \
+            "./out/windows/kenku-fm-win32-x64-$VERSION-full.nupkg" \
+            "./out/windows/kenku-fm-win32-x64-$VERSION-portable.zip" \
+            "./out/windows/RELEASES-x64"
