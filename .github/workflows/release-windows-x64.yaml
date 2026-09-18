@@ -19,10 +19,6 @@ name: Release Kenku FM - Windows x64 (manual)
 # secrets exist; without them DRM protected audio sources will not play.
 
 on:
-  # TEMPORARY test trigger - removed before this branch is finished.
-  push:
-    branches:
-      - claude/windows-release-workflow-uumt18
   workflow_dispatch:
     inputs:
       bump:
@@ -79,7 +75,7 @@ jobs:
       - name: Bump Version
         id: version
         env:
-          BUMP: ${{ inputs.bump || 'major' }}
+          BUMP: ${{ inputs.bump }}
         run: |
           VERSION=$(node -e '
             const fs = require("fs");
@@ -186,7 +182,7 @@ jobs:
             --title "Kenku FM $VERSION (Windows x64)" \
             --notes "$NOTES" \
             --generate-notes \
-            ${{ (inputs.draft || github.event_name == 'push') && '--draft' || '' }} \
+            ${{ inputs.draft && '--draft' || '' }} \
             ${{ inputs.prerelease && '--prerelease' || '' }} \
             "./out/windows/kenku-fm-win32-x64-$VERSION.exe" \
             "./out/windows/kenku-fm-win32-x64-$VERSION-full.nupkg" \
