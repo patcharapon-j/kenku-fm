@@ -133,12 +133,6 @@ export function PlaylistRemote({
       }
     });
 
-    window.player.on("PLAYER_REMOTE_PLAYLIST_PLAYBACK_SEEK", (args) => {
-      const to = args[0];
-      if (playback.playback) {
-      }
-    });
-
     return () => {
       window.player.removeAllListeners("PLAYER_REMOTE_PLAYLIST_PLAYBACK_PLAY");
       window.player.removeAllListeners("PLAYER_REMOTE_PLAYLIST_PLAYBACK_PAUSE");

@@ -16,6 +16,7 @@ import RepeatOne from "@mui/icons-material/RepeatOneRounded";
 import Shuffle from "@mui/icons-material/ShuffleRounded";
 import Next from "@mui/icons-material/SkipNextRounded";
 import Previous from "@mui/icons-material/SkipPreviousRounded";
+import Tune from "@mui/icons-material/TuneRounded";
 import useMediaQuery from "@mui/material/useMediaQuery";
 
 import { useDispatch, useSelector } from "react-redux";
@@ -27,6 +28,7 @@ import {
   shuffle,
   repeat,
 } from "../playlists/playlistPlaybackSlice";
+import { PlaybackSettings } from "./PlaybackSettings";
 
 const minWidthForLargeContext = 650;
 
@@ -212,6 +214,7 @@ function Controls({
 function Volume() {
   const dispatch = useDispatch();
   const large = useMediaQuery(`(min-width: ${minWidthForLargeContext}px)`);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const muted = useSelector((state: RootState) => state.playlistPlayback.muted);
   const volume = useSelector(
@@ -255,6 +258,16 @@ function Volume() {
           <VolumeUp sx={{ color: "rgba(255,255,255,0.4)" }} />
         </Box>
       )}
+      <IconButton
+        aria-label="playback settings"
+        onClick={() => setSettingsOpen(true)}
+      >
+        <Tune />
+      </IconButton>
+      <PlaybackSettings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </Stack>
   );
 }
