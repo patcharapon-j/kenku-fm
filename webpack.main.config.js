@@ -13,6 +13,7 @@ module.exports = {
   },
   externals: {
     opusscript: "commonjs2 opusscript",
+    "@discordjs/opus": "commonjs2 @discordjs/opus",
     "prism-media": "commonjs2 prism-media",
     "@snazzah/davey": "commonjs2 @snazzah/davey",
     "zlib-sync": "commonjs2 zlib-sync",

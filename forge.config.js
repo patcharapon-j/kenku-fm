@@ -92,7 +92,16 @@ const config = {
     {
       name: "@timfish/forge-externals-plugin",
       config: {
-        externals: ["opusscript", "prism-media", "@snazzah/davey", "zlib-sync"],
+        externals: [
+          "opusscript",
+          // prism-media only declares this as an optional peer dependency so
+          // the dependency walk never reaches it, and without it here the
+          // packaged build silently falls back to the pure JS encoder
+          "@discordjs/opus",
+          "prism-media",
+          "@snazzah/davey",
+          "zlib-sync",
+        ],
         includeDeps: true,
       },
     },

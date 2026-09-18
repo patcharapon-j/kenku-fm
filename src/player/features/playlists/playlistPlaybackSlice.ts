@@ -25,6 +25,8 @@ export interface PlaylistPlaybackState {
   muted: boolean;
   shuffle: boolean;
   repeat: Repeat;
+  /** Length of the cross fade between tracks in milliseconds, 0 disables it */
+  crossfade: number;
   track?: Track;
   playback?: Playback;
 }
@@ -35,6 +37,7 @@ const initialState: PlaylistPlaybackState = {
   muted: false,
   shuffle: false,
   repeat: "playlist",
+  crossfade: 0,
 };
 
 export const playlistPlaybackSlice = createSlice({
@@ -222,6 +225,9 @@ export const playlistPlaybackSlice = createSlice({
     repeat: (state, action: PayloadAction<Repeat>) => {
       state.repeat = action.payload;
     },
+    adjustCrossfade: (state, action: PayloadAction<number>) => {
+      state.crossfade = action.payload;
+    },
   },
 });
 
@@ -240,6 +246,7 @@ export const {
   mute,
   shuffle,
   repeat,
+  adjustCrossfade,
 } = playlistPlaybackSlice.actions;
 
 export default playlistPlaybackSlice.reducer;

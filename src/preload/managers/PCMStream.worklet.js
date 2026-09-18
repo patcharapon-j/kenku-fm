@@ -10,7 +10,7 @@ class PCMStream extends AudioWorkletProcessor {
 
   constructor(config) {
     super(config);
-    // Buffer size in bytes
+    // Buffer size in interleaved 16bit elements
     const bufferSize = config.parameterData.bufferSize;
     this.buffer = new Int16Array(bufferSize);
     this.pointer = 0;
@@ -18,8 +18,9 @@ class PCMStream extends AudioWorkletProcessor {
 
   process(inputs) {
     const input = inputs[0];
-    // Ensure input is a stereo signal
-    if (input && input.length === 2) {
+    // A disconnected input has no channels at all, anything with at least one
+    // is made stereo by `interleave`
+    if (input && input.length >= 1) {
       const samples = this.interleave(input);
       const pcm = this.floatTo16BitPCM(samples);
       this.bufferPCM(pcm);
@@ -61,12 +62,15 @@ class PCMStream extends AudioWorkletProcessor {
 
   /**
    * Interleave stereo samples to match PCM format
-   * @param {[Float32Array, Float32Array]} input
+   * @param {Float32Array[]} input
    * @returns {Float32Array}
    */
   interleave(input) {
     const left = input[0];
-    const right = input[1];
+    // The graph can resolve to mono, in which case the single channel is
+    // duplicated so that the stream we send stays stereo instead of falling
+    // silent. Anything wider than stereo uses its first two channels
+    const right = input.length > 1 ? input[1] : left;
     const length = left.length + right.length;
     const result = new Float32Array(length);
 
