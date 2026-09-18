@@ -21,6 +21,12 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
   _browserWindow: BrowserWindow;
   _encoder?: prism.opus.Encoder;
   _wss: WebSocketServer;
+  /**
+   * The bitrate to encode at, if one has been set
+   * This is kept so that it can be reapplied to any encoder created after this
+   * point as a new encoder is made each time the capture is restarted
+   */
+  _bitrate?: number;
 
   constructor() {
     super();
@@ -99,6 +105,31 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     this._wss.close();
   }
 
+  /**
+   * Set the bitrate of the opus encoder
+   * This is used to match the bitrate of the Discord voice channel that we're
+   * broadcasting to
+   * @param bitrate The bitrate in bits per second e.g. 64000
+   */
+  setBitrate(bitrate: number): void {
+    this._bitrate = bitrate;
+    this._applyBitrate(this._encoder);
+  }
+
+  /** Apply the current bitrate, if any, to the given encoder */
+  _applyBitrate(encoder?: prism.opus.Encoder) {
+    if (!encoder || this._bitrate === undefined) {
+      return;
+    }
+    try {
+      encoder.setBitrate(this._bitrate);
+    } catch (error) {
+      // The encoder frees its native handle when it ends so setting the bitrate
+      // on an encoder that has already been cleaned up will throw
+      console.error("Unable to set the audio encoder bitrate", error);
+    }
+  }
+
   _handleWebsocketConnection = (ws: WebSocket) => {
     ws.on("message", this._handleStreamData);
   };
@@ -161,6 +192,14 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
       rate: sampleRate,
     });
     this._encoder = encoder;
+
+    // `pipe` doesn't forward errors so without a listener here an encoder error
+    // would go unhandled and take down the main process
+    encoder.on("error", (error) => {
+      console.error("Audio encoder error", error);
+    });
+
+    this._applyBitrate(encoder);
 
     // Setup any listener streams
     this.emit("streamStart", encoder);
