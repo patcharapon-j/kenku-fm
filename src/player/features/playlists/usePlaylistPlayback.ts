@@ -20,6 +20,8 @@ const FADE_STEP = 25;
 const PRELOAD_AHEAD = 5000;
 /** Only move to the previous track when within this many seconds of the start */
 const PREVIOUS_THRESHOLD = 5;
+/** Length of the ramp used when an audible track has to be removed */
+const DECLICK_FADE = 50;
 
 /** A track to move to in the queue or the reason there isn't one */
 type QueueMove =
@@ -79,10 +81,22 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
 
   const removeOutgoing = useCallback(() => {
     const outgoing = outgoingRef.current;
+    const gain = outgoingFadeRef.current;
     outgoingRef.current = null;
     outgoingFadeRef.current = 0;
     outgoingPausedRef.current = false;
-    outgoing?.unload();
+    if (!outgoing) {
+      return;
+    }
+    // Unloading a track that is still audible cuts the waveform part way
+    // through a cycle, which is heard as a click, so ramp it down first.
+    // A cross fade that ran to completion is already silent here.
+    if (gain > 0 && outgoing.playing()) {
+      outgoing.once("fade", () => outgoing.unload());
+      outgoing.fade(outgoing.volume(), 0, DECLICK_FADE);
+    } else {
+      outgoing.unload();
+    }
   }, []);
 
   const removePreload = useCallback(() => {
@@ -183,15 +197,22 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     }
     removePreload();
     try {
-      preloadRef.current = {
-        id: move.track.id,
-        howl: new Howl({
-          src: move.track.url,
-          html5: true,
-          mute: store.getState().playlistPlayback.muted,
-          volume: 0,
-        }),
-      };
+      const howl = new Howl({
+        src: move.track.url,
+        html5: true,
+        mute: store.getState().playlistPlayback.muted,
+        volume: 0,
+      });
+      // A howl that failed to load stays in the `loading` state and can never
+      // fire `load` or `loaderror` again, so it has to be dropped here rather
+      // than handed to `play` where it would stall the playback for good
+      howl.once("loaderror", () => {
+        if (preloadRef.current?.howl === howl) {
+          preloadRef.current = null;
+        }
+        howl.unload();
+      });
+      preloadRef.current = { id: move.track.id, howl };
     } catch {
       // A track that fails to preload is loaded again when it starts playing
       preloadRef.current = null;
@@ -205,7 +226,10 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     if (!preload) {
       return null;
     }
-    if (preload.id !== track.id || preload.howl.state() === "unloaded") {
+    // Only a howl that finished loading is safe to reuse: one that is still
+    // loading, or that failed to load, would leave `play` waiting on a `load`
+    // event that may never arrive
+    if (preload.id !== track.id || preload.howl.state() !== "loaded") {
       preload.howl.unload();
       return null;
     }
@@ -282,6 +306,9 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
         // Arming from the play event keeps the timer in step with pause and resume
         howl.on("play", () => armCrossFadeRef.current());
         howl.on("pause", () => clearCrossFade());
+        // Howler pauses the sound before it seeks and restarts it internally,
+        // which emits no `play` event, so the timer is re-armed from `seek`
+        howl.on("seek", () => armCrossFadeRef.current());
 
         howl.on("loaderror", error);
 
@@ -314,9 +341,9 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
   const seek = useCallback(
     (to: number) => {
       dispatch(updatePlayback(to));
+      // A wall clock timer desynchronises on seek so it's re-armed from the new
+      // position by the `seek` handler registered in `play`
       trackRef.current?.seek(to);
-      // A wall clock timer desynchronises on seek so re-arm it from the new position
-      armCrossFadeRef.current();
     },
     []
   );

@@ -23,6 +23,12 @@ export class PlaybackManager {
   _recoveryAttempts = 0;
   /** Timer for the next recovery attempt, if one is scheduled */
   _recoveryTimeout?: NodeJS.Timeout;
+  /**
+   * The bitrate of each voice channel that is currently joined.
+   * One encoder feeds every connection so the lowest of these is used, as
+   * anything above a channel's own bitrate is discarded by Discord.
+   */
+  _channelBitrates: Map<string, number> = new Map();
 
   constructor(window: BrowserWindow) {
     this.window = window;
@@ -36,8 +42,20 @@ export class PlaybackManager {
     this.audioCaptureManager.on("streamEnd", () => {
       this._stopPlayback();
     });
-    this.discord.on("channelJoined", (_channelId, bitrate) => {
-      this.audioCaptureManager.setBitrate(bitrate);
+    this.audioCaptureManager.on("encoderError", () => {
+      this.window.webContents.send(
+        "ERROR",
+        "Audio encoding stopped unexpectedly. Restart the audio capture to try again.",
+      );
+    });
+    this.discord.on("channelJoined", (channelId, bitrate) => {
+      this._channelBitrates.set(channelId, bitrate);
+      this._updateBitrate();
+    });
+    this.discord.on("channelLeft", (channelId) => {
+      if (this._channelBitrates.delete(channelId)) {
+        this._updateBitrate();
+      }
     });
     this.discord.audioPlayer.on(
       AudioPlayerStatus.Playing,
@@ -46,11 +64,26 @@ export class PlaybackManager {
     this.discord.audioPlayer.on(AudioPlayerStatus.Idle, this._handlePlayerIdle);
   }
 
-  destroy() {
+  /**
+   * Encode at the lowest bitrate of the channels that are currently joined, or
+   * let the encoder use its own default when there are none left
+   */
+  _updateBitrate = () => {
+    const bitrates = Array.from(this._channelBitrates.values());
+    this.audioCaptureManager.setBitrate(
+      bitrates.length > 0 ? Math.min(...bitrates) : undefined,
+    );
+  };
+
+  _clearRecoveryTimeout = () => {
     if (this._recoveryTimeout) {
       clearTimeout(this._recoveryTimeout);
       this._recoveryTimeout = undefined;
     }
+  };
+
+  destroy() {
+    this._clearRecoveryTimeout();
     this.discord.audioPlayer.off(
       AudioPlayerStatus.Playing,
       this._handlePlayerPlaying,
@@ -70,6 +103,9 @@ export class PlaybackManager {
    * otherwise destroy the encoder along with it
    */
   _play = () => {
+    // A recovery scheduled for an earlier stream must never run against this
+    // one, which would discard the packets it has just buffered
+    this._clearRecoveryTimeout();
     if (!this._stream) {
       return;
     }
@@ -91,10 +127,7 @@ export class PlaybackManager {
   };
 
   _stopPlayback = () => {
-    if (this._recoveryTimeout) {
-      clearTimeout(this._recoveryTimeout);
-      this._recoveryTimeout = undefined;
-    }
+    this._clearRecoveryTimeout();
     this._stream?.unpipe();
     this._stream = undefined;
     this.discord.audioPlayer.stop();

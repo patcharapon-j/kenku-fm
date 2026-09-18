@@ -57,6 +57,12 @@ const REJOIN_BASE_DELAY = 1000;
 const READY_TIMEOUT = 15000;
 /** Time in ms to wait for a disconnected connection to start reconnecting itself */
 const RECONNECT_TIMEOUT = 5000;
+/**
+ * Voice websocket close code sent when the bot was disconnected from the
+ * channel, which covers a moderator kick, a deleted channel and a lost
+ * permission. Discord tells us not to reconnect when we see it.
+ */
+const VOICE_CLOSE_DISCONNECTED = 4014;
 
 export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
   window: BrowserWindow;
@@ -75,6 +81,8 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
    * Used to restore the outputs after the Discord client reconnects
    */
   _joinedChannelIds: Set<string> = new Set();
+  /** True while `_restoreChannels` is working through the joined channels */
+  _restoring = false;
 
   constructor(window: BrowserWindow) {
     super();
@@ -149,6 +157,14 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
         event.reply("DISCORD_GUILDS", guilds);
         await this._restoreChannels(event);
       });
+      // `ClientReady` is only ever emitted once per client, so the restore is
+      // also driven from the shard events, which do fire again each time the
+      // gateway connection comes back after a drop
+      const handleShardReconnect = () => {
+        void this._restoreChannels(event);
+      };
+      this.client.on(Events.ShardReady, handleShardReconnect);
+      this.client.on(Events.ShardResume, handleShardReconnect);
       this.client.on("error", (err) => {
         event.reply("DISCORD_DISCONNECTED");
         event.reply("ERROR", `Error connecting to bot: ${err.message}`);
@@ -195,6 +211,7 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
       );
       return;
     }
+    let output: VoiceOutput | undefined;
     try {
       const channel = await this.client.channels.fetch(channelId);
       if (!channel || !channel.isVoiceBased() || !channel.joinable) {
@@ -223,7 +240,7 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
         guildId: channel.guild.id,
         adapterCreator: channel.guild.voiceAdapterCreator,
       });
-      const output: VoiceOutput = {
+      output = {
         channelId,
         guildId: channel.guild.id,
         connection,
@@ -244,15 +261,16 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
           this._replyChannelLeft(event, channelId);
         }
       };
+      const trackedOutput = output;
       const handleReady = () => {
-        output.attempts = 0;
-        output.rejoining = false;
+        trackedOutput.attempts = 0;
+        trackedOutput.rejoining = false;
       };
       const handleDisconnected = (
         _: VoiceConnectionState,
         newState: VoiceConnectionDisconnectedState,
       ) => {
-        this._handleVoiceDisconnect(event, output, newState);
+        this._handleVoiceDisconnect(event, trackedOutput, newState);
       };
       connection.on("error", handleError);
       connection.on(VoiceConnectionStatus.Ready, handleReady);
@@ -270,11 +288,23 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
       // a join that never completes isn't shown as a success
       await entersState(connection, VoiceConnectionStatus.Ready, READY_TIMEOUT);
 
+      // The channel was left or joined again while this join was in flight so
+      // this join no longer speaks for the channel
+      if (this._voiceOutputs.get(channelId) !== trackedOutput) {
+        return;
+      }
+
       this._joinedChannelIds.add(channelId);
       event.reply("DISCORD_CHANNEL_JOINED", channelId);
       this.emit("channelJoined", channelId, channel.bitrate);
     } catch (e) {
       console.error(e);
+      // A join that was superseded or explicitly left fails silently rather
+      // than reporting an error for a channel the user has moved on from, or
+      // tearing down whatever replaced it
+      if (output && this._voiceOutputs.get(channelId) !== output) {
+        return;
+      }
       this._destroyVoiceOutput(channelId);
       this._replyChannelLeft(event, channelId);
       event.reply("ERROR", `Error connecting to voice channel: ${e.message}`);
@@ -283,16 +313,34 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
 
   /** Rejoin the channels that were joined before the client reconnected */
   _restoreChannels = async (event: Electron.IpcMainEvent) => {
-    for (const channelId of Array.from(this._joinedChannelIds)) {
-      const output = this._voiceOutputs.get(channelId);
-      // Don't touch a channel that still has a live connection
-      if (
-        output &&
-        output.connection.state.status !== VoiceConnectionStatus.Destroyed
-      ) {
-        continue;
+    const client = this.client;
+    if (!client || this._restoring) {
+      return;
+    }
+    this._restoring = true;
+    try {
+      for (const channelId of Array.from(this._joinedChannelIds)) {
+        // The client was replaced or disconnected while an earlier join was in
+        // flight, the rest of these channels belong to a client that has gone
+        if (this.client !== client) {
+          return;
+        }
+        // The user left this channel while an earlier join was in flight
+        if (!this._joinedChannelIds.has(channelId)) {
+          continue;
+        }
+        const output = this._voiceOutputs.get(channelId);
+        // Don't touch a channel that still has a live connection
+        if (
+          output &&
+          output.connection.state.status !== VoiceConnectionStatus.Destroyed
+        ) {
+          continue;
+        }
+        await this._joinChannel(event, channelId);
       }
-      await this._joinChannel(event, channelId);
+    } finally {
+      this._restoring = false;
     }
   };
 
@@ -303,6 +351,26 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
   ): Promise<void> => {
     // The connection was disconnected by us so there's nothing to recover
     if (state.reason === VoiceConnectionDisconnectReason.Manual) {
+      return;
+    }
+    // The bot was kicked from the channel, moved out of it, or lost the
+    // permission to be in it. Rejoining would walk it straight back into a
+    // channel it was removed from, so these disconnects are final.
+    if (
+      state.reason === VoiceConnectionDisconnectReason.EndpointRemoved ||
+      (state.reason === VoiceConnectionDisconnectReason.WebSocketClose &&
+        state.closeCode === VOICE_CLOSE_DISCONNECTED)
+    ) {
+      // This output was already replaced so it isn't ours to tear down
+      if (this._voiceOutputs.get(output.channelId) !== output) {
+        return;
+      }
+      this._destroyVoiceOutput(output.channelId);
+      this._replyChannelLeft(event, output.channelId);
+      event.reply(
+        "ERROR",
+        "Disconnected from voice channel. The bot was removed from this channel or no longer has permission to join it.",
+      );
       return;
     }
     // A rejoin is already scheduled for this connection
@@ -354,7 +422,10 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
     if (output.attempts >= MAX_REJOIN_ATTEMPTS) {
       console.error(`Unable to rejoin voice channel ${output.channelId}`);
       this._destroyVoiceOutput(output.channelId);
-      this._replyChannelLeft(event, output.channelId);
+      // Keep the channel in the restore set: the rejoin normally runs out of
+      // attempts because the gateway is down, and the restore is how the bot
+      // gets back in once it returns
+      this._replyChannelLeft(event, output.channelId, true);
       event.reply("ERROR", "Lost connection to voice channel");
       return;
     }
@@ -425,10 +496,16 @@ export class DiscordBroadcast extends TypedEmitter<DiscordBroadcastEvents> {
     }
   };
 
-  _replyChannelLeft = (event: Electron.IpcMainEvent, channelId: string) => {
+  _replyChannelLeft = (
+    event: Electron.IpcMainEvent,
+    channelId: string,
+    keepForRestore = false,
+  ) => {
     // A channel the renderer has been told we left must not come back when the
-    // client reconnects
-    this._joinedChannelIds.delete(channelId);
+    // client reconnects, unless we only left it because the connection dropped
+    if (!keepForRestore) {
+      this._joinedChannelIds.delete(channelId);
+    }
     event.reply("DISCORD_CHANNEL_LEFT", channelId);
     this.emit("channelLeft", channelId);
   };

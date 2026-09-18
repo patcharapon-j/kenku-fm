@@ -10,7 +10,19 @@ declare const AUDIO_CAPTURE_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 interface AudioCaptureManagerEvents {
   streamStart: (stream: Readable) => void;
   streamEnd: () => void;
+  encoderError: (error: Error) => void;
 }
+
+/** libopus `OPUS_SET_BITRATE_REQUEST`, applied directly to bypass prism's clamp */
+const OPUS_SET_BITRATE = 4002;
+/** The bitrate range libopus itself accepts, in bits per second */
+const MIN_BITRATE = 500;
+const MAX_BITRATE = 512000;
+/** Expected packet loss used to size the inband forward error correction */
+const EXPECTED_PACKET_LOSS = 0.05;
+
+/** Only report which Opus module was loaded once per process */
+let loggedEncoderType = false;
 
 /**
  * Manager to capture audio from browser views and external audio devices
@@ -111,7 +123,7 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
    * broadcasting to
    * @param bitrate The bitrate in bits per second e.g. 64000
    */
-  setBitrate(bitrate: number): void {
+  setBitrate(bitrate?: number): void {
     this._bitrate = bitrate;
     this._applyBitrate(this._encoder);
   }
@@ -121,12 +133,38 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     if (!encoder || this._bitrate === undefined) {
       return;
     }
+    // `prism.opus.Encoder.setBitrate` clamps to 16kbps-128kbps, which neither
+    // matches a boosted channel nor a channel below 16kbps, so the CTL is
+    // applied directly and clamped to the range libopus itself accepts
+    const bitrate = Math.min(MAX_BITRATE, Math.max(MIN_BITRATE, this._bitrate));
     try {
-      encoder.setBitrate(this._bitrate);
+      const native = encoder.encoder;
+      const ctl = native?.applyEncoderCTL ?? native?.encoderCTL;
+      if (typeof ctl === "function") {
+        ctl.apply(native, [OPUS_SET_BITRATE, bitrate]);
+      } else {
+        encoder.setBitrate(bitrate);
+      }
     } catch (error) {
       // The encoder frees its native handle when it ends so setting the bitrate
       // on an encoder that has already been cleaned up will throw
       console.error("Unable to set the audio encoder bitrate", error);
+    }
+  }
+
+  /**
+   * Enable inband forward error correction so that the decoder can rebuild a
+   * lost packet from the redundant copy carried in the next one
+   */
+  _applyErrorCorrection(encoder: prism.opus.Encoder) {
+    try {
+      encoder.setFEC(true);
+      encoder.setPLP(EXPECTED_PACKET_LOSS);
+    } catch (error) {
+      console.error(
+        "Unable to enable audio encoder forward error correction",
+        error
+      );
     }
   }
 
@@ -193,13 +231,30 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     });
     this._encoder = encoder;
 
+    // A packaged build that is missing the native module silently falls back to
+    // the pure JS encoder, so make which one is in use visible
+    if (!loggedEncoderType) {
+      loggedEncoderType = true;
+      console.log(`Using Opus module ${prism.opus.Encoder.type}`);
+    }
+
     // `pipe` doesn't forward errors so without a listener here an encoder error
     // would go unhandled and take down the main process
     encoder.on("error", (error) => {
       console.error("Audio encoder error", error);
+      // A broken encoder stops producing packets without ending the streams it
+      // feeds, which would leave the broadcast silently stuck in `Playing`
+      // forever, so the pipeline is torn down deterministically instead.
+      // The guard also stops the `end()` below from re-entering this handler.
+      if (this._encoder !== encoder) {
+        return;
+      }
+      this._handleStreamEnd();
+      this.emit("encoderError", error);
     });
 
     this._applyBitrate(encoder);
+    this._applyErrorCorrection(encoder);
 
     // Setup any listener streams
     this.emit("streamStart", encoder);
