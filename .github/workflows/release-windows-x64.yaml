@@ -7,6 +7,12 @@ name: Release Kenku FM - Windows x64 (manual)
 # GitHub Release. The version commit and the `v<version>` tag are only pushed
 # once the build has succeeded, so a failed build leaves the repo untouched.
 #
+# The job pins `windows-2022` on purpose: from June 2026 the `windows-latest`
+# and `windows-2025` images ship Visual Studio 2026 (VS 18) instead of VS 2022,
+# and neither the node-gyp bundled with Node 22 nor the `@electron/node-gyp`
+# fork used by electron-forge recognises that toolchain, so every native module
+# (zlib-sync, @discordjs/opus) fails to compile there.
+#
 # Code signing (DigiCert) is not used here, so the installer is unsigned and
 # Windows SmartScreen will warn on first run. Widevine (castlabs EVS) signing is
 # applied automatically when the CASTLABS_ACCOUNT_NAME / CASTLABS_ACCOUNT_PASSWORD
@@ -44,7 +50,7 @@ concurrency:
 
 jobs:
   win-x64-release:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     defaults:
       run:
@@ -97,7 +103,7 @@ jobs:
           fi
 
       - name: Install Dependencies
-        run: yarn install --non-interactive --frozen-lockfile
+        run: yarn install --non-interactive --frozen-lockfile --network-timeout 600000
 
       - name: Package App
         run: yarn run package
@@ -122,7 +128,7 @@ jobs:
 
       - name: Create Installer
         run: |
-          yarn install --non-interactive --frozen-lockfile --cwd ./publish/windows
+          yarn install --non-interactive --frozen-lockfile --network-timeout 600000 --cwd ./publish/windows
 
           node ./publish/windows/make-unsigned.js ${{ steps.version.outputs.version }}
 
