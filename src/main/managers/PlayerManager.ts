@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, webContents } from "electron";
 import Fastify, { FastifyInstance } from "fastify";
 import { registerRemote } from "../remote";
+import { getMediaURL } from "../mediaProtocol";
 
 declare const PLAYER_WINDOW_WEBPACK_ENTRY: string;
 declare const PLAYER_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -14,6 +15,7 @@ export class PlayerManager {
   constructor() {
     ipcMain.on("PLAYER_GET_URL", this._handleGetURL);
     ipcMain.on("PLAYER_GET_PRELOAD_URL", this._handleGetPreloadURL);
+    ipcMain.on("PLAYER_GET_MEDIA_URL", this._handleGetMediaURL);
     ipcMain.on("PLAYER_REGISTER_VIEW", this._handleRegisterView);
     ipcMain.on("PLAYER_START_REMOTE", this._handleStartRemote);
     ipcMain.on("PLAYER_STOP_REMOTE", this._handleStopRemote);
@@ -22,6 +24,7 @@ export class PlayerManager {
   destroy() {
     ipcMain.off("PLAYER_GET_URL", this._handleGetURL);
     ipcMain.off("PLAYER_GET_PRELOAD_URL", this._handleGetPreloadURL);
+    ipcMain.off("PLAYER_GET_MEDIA_URL", this._handleGetMediaURL);
     ipcMain.off("PLAYER_REGISTER_VIEW", this._handleRegisterView);
     ipcMain.off("PLAYER_START_REMOTE", this._handleStartRemote);
     ipcMain.off("PLAYER_STOP_REMOTE", this._handleStopRemote);
@@ -89,6 +92,15 @@ export class PlayerManager {
 
   _handleGetPreloadURL = (event: Electron.IpcMainEvent) => {
     event.returnValue = PLAYER_WINDOW_PRELOAD_WEBPACK_ENTRY;
+  };
+
+  /**
+   * Turn a local file path into a URL the player can route through Web Audio
+   * Only the player's preload can reach this, which is what keeps the scheme
+   * from being a way for a page in a tab to read the disk
+   */
+  _handleGetMediaURL = (event: Electron.IpcMainEvent, filePath: string) => {
+    event.returnValue = getMediaURL(filePath);
   };
 
   _handleRegisterView = (_: Electron.IpcMainEvent, viewId: number) => {

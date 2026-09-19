@@ -1,6 +1,9 @@
 import { ipcRenderer } from "electron";
 
-import { AudioCaptureManagerPreload } from "../preload/managers/AudioCaptureManagerPreload";
+import {
+  AudioCaptureManagerPreload,
+  StreamingMode,
+} from "../preload/managers/AudioCaptureManagerPreload";
 
 const audioCaptureManager = new AudioCaptureManagerPreload();
 
@@ -49,9 +52,32 @@ ipcRenderer.on(
   }
 );
 
+ipcRenderer.on("AUDIO_CAPTURE_START", (_, streamingMode: StreamingMode) => {
+  audioCaptureManager.start(streamingMode);
+});
+
+ipcRenderer.on("AUDIO_CAPTURE_SET_BITRATE", (_, bitrate?: number) => {
+  audioCaptureManager.setBitrate(bitrate);
+});
+
 ipcRenderer.on(
-  "AUDIO_CAPTURE_START",
-  (_, streamingMode: "lowLatency" | "performance") => {
-    audioCaptureManager.start(streamingMode);
+  "AUDIO_CAPTURE_SET_VIEW_GAIN",
+  (_, viewId: number, gain: number) => {
+    audioCaptureManager.setViewGain(viewId, gain);
   }
 );
+
+ipcRenderer.on(
+  "AUDIO_CAPTURE_SET_EXTERNAL_GAIN",
+  (_, deviceId: string, gain: number) => {
+    audioCaptureManager.setExternalGain(deviceId, gain);
+  }
+);
+
+ipcRenderer.on("AUDIO_CAPTURE_SET_MONITOR_GAIN", (_, gain: number) => {
+  audioCaptureManager.setMonitorGain(gain);
+});
+
+ipcRenderer.on("AUDIO_CAPTURE_SET_MONITOR_DEVICE", (_, deviceId: string) => {
+  audioCaptureManager.setMonitorDevice(deviceId);
+});

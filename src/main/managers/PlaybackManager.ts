@@ -10,6 +10,14 @@ import { AudioCaptureManagerMain } from "./AudioCaptureManagerMain";
 
 /** Maximum number of times to recreate the audio resource before giving up */
 const MAX_RECOVERY_ATTEMPTS = 5;
+/**
+ * Number of Opus packets the play stream may hold before the encoder is asked
+ * to back off
+ * Each packet is 20ms of audio, so the stream's own default of 16 would let
+ * over a third of a second of audio queue up ahead of the voice connection,
+ * which is latency that never comes back
+ */
+const MAX_QUEUED_PACKETS = 3;
 /** Delay in ms before recreating the audio resource after playback stopped */
 const RECOVERY_DELAY = 1000;
 
@@ -47,6 +55,15 @@ export class PlaybackManager {
         "ERROR",
         "Audio encoding stopped unexpectedly. Restart the audio capture to try again.",
       );
+    });
+    this.audioCaptureManager.on("encoderInfo", (info) => {
+      this.window.webContents.send("AUDIO_CAPTURE_ENCODER", info);
+    });
+    this.audioCaptureManager.on("levels", (levels) => {
+      this.window.webContents.send("AUDIO_CAPTURE_LEVELS", levels);
+    });
+    this.audioCaptureManager.on("warning", (message) => {
+      this.window.webContents.send("AUDIO_CAPTURE_WARNING", message);
     });
     this.discord.on("channelJoined", (channelId, bitrate) => {
       this._channelBitrates.set(channelId, bitrate);
@@ -118,7 +135,10 @@ export class PlaybackManager {
     }
     // The encoder emits one opus packet per read so the pass through stream
     // must be in object mode to keep the packets intact
-    const playStream = new PassThrough({ objectMode: true });
+    const playStream = new PassThrough({
+      objectMode: true,
+      highWaterMark: MAX_QUEUED_PACKETS,
+    });
     this._stream.pipe(playStream);
     const resource = createAudioResource(playStream, {
       inputType: StreamType.Opus,

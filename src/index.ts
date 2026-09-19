@@ -13,10 +13,15 @@ import icon from "./assets/icon.png";
 import { getMalformedUserAgent, getUserAgent } from "./main/userAgent";
 import { SessionManager } from "./main/managers/SessionManager";
 import { runAutoUpdate } from "./autoUpdate";
+import { handleMediaProtocol, registerMediaScheme } from "./main/mediaProtocol";
 import { getSavedBounds, saveWindowBounds } from "./bounds";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+
+// The scheme's privileges have to be declared before the app is ready, so this
+// runs at load rather than alongside the handler that serves it
+registerMediaScheme();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 let window: BrowserWindow | null = null;
@@ -120,6 +125,8 @@ if (!hasSingleInstanceLock) {
       hasWidevineError = true;
       console.error("components failed to load:", JSON.stringify(e, null, 2));
     }
+
+    handleMediaProtocol();
 
     window = createWindow();
 

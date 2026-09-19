@@ -176,6 +176,11 @@ export class BrowserViewManagerMain {
     const view = new WebContentsView({
       webPreferences: {
         preload,
+        // A view that isn't the selected tab is detached from the window, which
+        // Chromium treats as a background page and throttles timers and frames
+        // in. The player keeps running in one of those, so its fades and its
+        // playback position would stall the moment a user opened another tab
+        backgroundThrottling: false,
       },
     });
     this.window.contentView.addChildView(view);

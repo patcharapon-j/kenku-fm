@@ -22,7 +22,10 @@ type Channel =
   | "BROWSER_VIEW_MEDIA_PAUSED"
   | "BROWSER_VIEW_NEW_TAB"
   | "BROWSER_VIEW_CLOSE_TAB"
-  | "PLAYER_REMOTE_ENABLED";
+  | "PLAYER_REMOTE_ENABLED"
+  | "AUDIO_CAPTURE_LEVELS"
+  | "AUDIO_CAPTURE_ENCODER"
+  | "AUDIO_CAPTURE_WARNING";
 
 const validChannels: Channel[] = [
   "ERROR",
@@ -43,6 +46,9 @@ const validChannels: Channel[] = [
   "BROWSER_VIEW_NEW_TAB",
   "BROWSER_VIEW_CLOSE_TAB",
   "PLAYER_REMOTE_ENABLED",
+  "AUDIO_CAPTURE_LEVELS",
+  "AUDIO_CAPTURE_ENCODER",
+  "AUDIO_CAPTURE_WARNING",
 ];
 
 // Capture audio when new views are loaded
@@ -149,13 +155,31 @@ const api = {
   setMuted: (id: number, muted: boolean) => {
     ipcRenderer.send("AUDIO_CAPTURE_SET_MUTED", id, muted);
   },
+  /** Set the level a tab is mixed into the broadcast at, where 1 is unity */
+  setViewGain: (id: number, gain: number) => {
+    ipcRenderer.send("AUDIO_CAPTURE_SET_VIEW_GAIN", id, gain);
+  },
+  /** Set the level an external input is mixed in at, where 1 is unity */
+  setExternalGain: (deviceId: string, gain: number) => {
+    ipcRenderer.send("AUDIO_CAPTURE_SET_EXTERNAL_GAIN", deviceId, gain);
+  },
+  /** Set the level of the local monitoring, which the broadcast never hears */
+  setMonitorGain: (gain: number) => {
+    ipcRenderer.send("AUDIO_CAPTURE_SET_MONITOR_GAIN", gain);
+  },
+  /** Send the local monitoring to a device, or to the default one when empty */
+  setMonitorDevice: (deviceId: string) => {
+    ipcRenderer.send("AUDIO_CAPTURE_SET_MONITOR_DEVICE", deviceId);
+  },
   startExternalAudioCapture: (deviceId: string) => {
     ipcRenderer.send("AUDIO_CAPTURE_START_EXTERNAL_AUDIO_CAPTURE", deviceId);
   },
   stopExternalAudioCapture: (deviceId: string) => {
     ipcRenderer.send("AUDIO_CAPTURE_STOP_EXTERNAL_AUDIO_CAPTURE", deviceId);
   },
-  startAudioCapture: (streamingMode: "lowLatency" | "performance") => {
+  startAudioCapture: (
+    streamingMode: "lowLatency" | "balanced" | "performance",
+  ) => {
     ipcRenderer.send("AUDIO_CAPTURE_START", streamingMode);
   },
   toggleMaximize: () => {
