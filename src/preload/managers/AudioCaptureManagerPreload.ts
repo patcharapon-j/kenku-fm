@@ -375,7 +375,12 @@ export class AudioCaptureManagerPreload {
     }
     const packet = new Uint8Array(chunk.byteLength);
     chunk.copyTo(packet);
-    port.postMessage({ type: "opus", data: packet }, [packet.buffer]);
+    // Deliberately not transferred: a renderer to main port runs the message
+    // through the main process' own deserialiser, which has no way to take
+    // ownership of a transferred `ArrayBuffer` and hands on `null` in place of
+    // the whole message instead. The data crosses a process boundary here, so
+    // it is copied into the channel either way and the transfer bought nothing
+    port.postMessage({ type: "opus", data: packet });
   }
 
   /**
@@ -503,7 +508,8 @@ export class AudioCaptureManagerPreload {
     }
     this._pendingBlock = undefined;
     this._sentBlocks++;
-    port.postMessage({ type: "pcm", data }, [data.buffer]);
+    // Not transferred, for the reason given in `_handleEncodedChunk`
+    port.postMessage({ type: "pcm", data });
   }
 
   /** Give the block's memory back to the worklet so that it can be filled again */

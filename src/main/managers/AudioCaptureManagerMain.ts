@@ -199,6 +199,13 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
    * to a window that has been reloaded along with the streaming mode
    */
   _normalize = false;
+  /**
+   * Whether audio that could not be read off the port has been reported
+   * A message the capture window sends in a shape this process can't
+   * reconstruct is dropped for every block, so this is reported once rather
+   * than for each one
+   */
+  _reportedUnusableMessage = false;
 
   constructor() {
     super();
@@ -441,12 +448,17 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
   _handlePortMessage = (event: Electron.MessageEvent) => {
     const message = event.data as { type?: string; data?: unknown };
     if (!message || typeof message !== "object") {
+      // Every block arrives the same way, so audio this process can't read is
+      // all of the audio rather than a glitch in it
+      this._reportUnusableMessage();
       return;
     }
     if (message.type === "opus") {
       const packet = toPCMBuffer(message.data);
       if (packet) {
         this._handleOpusPacket(packet);
+      } else {
+        this._reportUnusableMessage();
       }
       return;
     }
@@ -455,6 +467,7 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     }
     const data = toPCMBuffer(message.data);
     if (!data) {
+      this._reportUnusableMessage();
       return;
     }
     this._handleStreamData(data);
@@ -462,6 +475,27 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     // capture window to need to know whether this process is keeping up
     this._receivedBlocks++;
     this._pcmPort?.postMessage(this._receivedBlocks);
+  };
+
+  /**
+   * Report that the audio arriving over the port can't be read here
+   *
+   * Nothing downstream can tell this apart from a capture that is simply
+   * silent: the broadcast sits waiting on packets that never come, while the
+   * capture window's own meters and monitoring carry on as though all is well.
+   * That is worth saying out loud rather than leaving to be discovered by
+   * whoever is listening on the other end.
+   */
+  _reportUnusableMessage = () => {
+    if (this._reportedUnusableMessage) {
+      return;
+    }
+    this._reportedUnusableMessage = true;
+    console.error("Unable to read the audio sent by the capture window");
+    this.emit(
+      "warning",
+      "The broadcast is not receiving any audio from the audio engine, so nothing is being sent to Discord."
+    );
   };
 
   _handleOpusPacket = (packet: Buffer) => {
