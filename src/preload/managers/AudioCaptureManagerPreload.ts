@@ -650,6 +650,9 @@ export class AudioCaptureManagerPreload {
       };
       const stream = await navigator.mediaDevices.getUserMedia(streamConfig);
 
+      // As with a browser view, capturing a device that is already being
+      // captured would mix it in twice rather than replace it
+      this._stopExternalNodes(deviceId);
       this._externalAudioStreams[deviceId] = stream;
       this._reportSampleRate(stream, `Audio input ${deviceId}`);
 
@@ -670,6 +673,10 @@ export class AudioCaptureManagerPreload {
   }
 
   stopExternalAudioCapture(deviceId: string): void {
+    this._stopExternalNodes(deviceId);
+  }
+
+  _stopExternalNodes(deviceId: string): void {
     const stream = this._externalAudioStreams[deviceId];
     if (stream) {
       for (const track of stream.getTracks()) {
@@ -815,6 +822,10 @@ export class AudioCaptureManagerPreload {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         streamConfig as any
       );
+      // A view that is already being captured would otherwise be mixed in
+      // twice, at double the level, with nothing left holding the first set of
+      // nodes to disconnect them
+      this._teardownViewStream(viewId);
       this._mediaStreams[viewId] = stream;
 
       const output = this._audioContext.createGain();
@@ -834,10 +845,11 @@ export class AudioCaptureManagerPreload {
   }
 
   /**
-   * Stop an audio capture for the given browser view
-   * @param viewId Browser view id
+   * Take down the nodes capturing a browser view, leaving its level alone
+   * A view that is being captured again keeps the level it was given, so this
+   * is separate from stopping the view for good
    */
-  stopBrowserViewStream(viewId: number): void {
+  _teardownViewStream(viewId: number): void {
     if (this._mediaStreams[viewId]) {
       for (const track of this._mediaStreams[viewId].getTracks()) {
         track.stop();
@@ -851,6 +863,14 @@ export class AudioCaptureManagerPreload {
       output.disconnect();
       delete this._mediaStreamOutputs[viewId];
     }
+  }
+
+  /**
+   * Stop an audio capture for the given browser view
+   * @param viewId Browser view id
+   */
+  stopBrowserViewStream(viewId: number): void {
+    this._teardownViewStream(viewId);
     // The level follows the view, a new view that reuses the id is a new source
     delete this._mediaStreamGains[viewId];
     delete this._mediaStreamMuted[viewId];
