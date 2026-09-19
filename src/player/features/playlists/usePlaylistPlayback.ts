@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Howl } from "howler";
 
 import { useDispatch, useSelector, useStore } from "react-redux";
 import { RootState } from "../../app/store";
+import { audioContextTime, WebAudioTrack } from "../../common/WebAudioTrack";
 import {
   playPause,
   playTrack,
@@ -36,14 +36,14 @@ type QueueMove =
 
 export function usePlaylistPlayback(onError: (message: string) => void) {
   /** Track that is currently playing */
-  const trackRef = useRef<Howl | null>(null);
+  const trackRef = useRef<WebAudioTrack | null>(null);
   /** Track that is fading out during a cross fade */
-  const outgoingRef = useRef<Howl | null>(null);
+  const outgoingRef = useRef<WebAudioTrack | null>(null);
   /** Next track loaded ahead of a cross fade */
-  const preloadRef = useRef<{ id: string; howl: Howl } | null>(null);
+  const preloadRef = useRef<{ id: string; track: WebAudioTrack } | null>(null);
   /**
    * Cross fade gain of each live instance.
-   * The master volume is multiplied by these before it reaches a howl so that
+   * The master volume is multiplied by these before it reaches a track so that
    * moving the volume slider doesn't cancel an in flight cross fade.
    */
   const trackFadeRef = useRef(1);
@@ -55,20 +55,34 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
   /**
    * Gain applied on top of the cross fade gain by the transport.
    * Pause, resume and stop ramp this between 1 and 0 rather than starting and
-   * stopping a howl outright, which cuts the waveform part way through a cycle
-   * and is heard as a click
+   * stopping a track outright, which cuts the waveform part way through a
+   * cycle and is heard as a click
    */
   const transportFadeRef = useRef(1);
   /** Gain the transport fade in flight is heading towards */
   const transportTargetRef = useRef(1);
   /** Interval that steps the transport fade */
   const transportRef = useRef<NodeJS.Timeout | null>(null);
+  /** Timer that runs the callback of a scheduled transport fade on arrival */
+  const transportEndRef = useRef<NodeJS.Timeout | null>(null);
+  /** Whether the transport gain is being run as scheduled automation */
+  const transportAutomatedRef = useRef(false);
   /** Interval that steps the equal power cross fade */
   const fadeRef = useRef<NodeJS.Timeout | null>(null);
+  /** Timer that ends a scheduled cross fade, null while one is held */
+  const fadeEndRef = useRef<NodeJS.Timeout | null>(null);
+  /** Whether the cross fade gains are being run as scheduled automation */
+  const fadeAutomatedRef = useRef(false);
+  /** Progress the scheduled cross fade segment in flight started from */
+  const fadeProgressRef = useRef(0);
+  /** Audio clock time that segment was scheduled at */
+  const fadeStartRef = useRef(0);
+  /** Length of the cross fade as a whole */
+  const fadeDurationRef = useRef(0);
   /** Timeout that starts the cross fade ahead of the end of the track */
   const crossFadeRef = useRef<NodeJS.Timeout | null>(null);
   const animationRef = useRef<number | null>(null);
-  /** Howl event handlers held in refs to avoid a circular dependency with play */
+  /** Track event handlers held in refs to avoid a circular dependency with play */
   const handleEndRef = useRef<() => void>(() => {});
   const armCrossFadeRef = useRef<() => void>(() => {});
 
@@ -85,35 +99,100 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     }
   }, []);
 
+  /**
+   * Push the current gain of every live instance to its track.
+   * A track's volume is the master volume scaled by its cross fade gain and by
+   * the transport gain, so a volume slider tick, a cross fade and a transport
+   * fade can all be in flight at once without cancelling each other.
+   * A gain that is being run as scheduled automation is left out of the
+   * product: it is already being applied inside that track's own graph, so
+   * multiplying it in here would both apply it twice and step what the
+   * automation is doing smoothly.
+   */
+  const applyVolume = useCallback(
+    (override?: number) => {
+      const volume = override ?? store.getState().playlistPlayback.volume;
+      const transport = transportAutomatedRef.current
+        ? 1
+        : transportFadeRef.current;
+      const track = fadeAutomatedRef.current ? 1 : trackFadeRef.current;
+      const outgoing = fadeAutomatedRef.current ? 1 : outgoingFadeRef.current;
+      trackRef.current?.volume(volume * track * transport);
+      outgoingRef.current?.volume(volume * outgoing * transport);
+    },
+    [store],
+  );
+
+  /**
+   * End the cross fade in flight, however it is being run.
+   * A scheduled fade hands the gain it had reached back to the refs, in the
+   * same tick as it is taken out of the graph, so that nothing downstream has
+   * to care which of the two paths the fade was taking.
+   */
   const stopFade = useCallback(() => {
     if (fadeRef.current !== null) {
       clearInterval(fadeRef.current);
       fadeRef.current = null;
     }
-  }, []);
+    if (fadeEndRef.current !== null) {
+      clearTimeout(fadeEndRef.current);
+      fadeEndRef.current = null;
+    }
+    if (!fadeAutomatedRef.current) {
+      return;
+    }
+    fadeAutomatedRef.current = false;
+    const track = trackRef.current;
+    const outgoing = outgoingRef.current;
+    if (track) {
+      trackFadeRef.current = track.holdGain("fade");
+      track.setGain("fade", 1);
+    }
+    if (outgoing) {
+      outgoingFadeRef.current = outgoing.holdGain("fade");
+      outgoing.setGain("fade", 1);
+    }
+    applyVolume();
+  }, [applyVolume]);
 
   /**
-   * Push the current gain of every live instance to its howl.
-   * A howl's volume is the master volume scaled by its cross fade gain and by
-   * the transport gain, so a volume slider tick, a cross fade and a transport
-   * fade can all be in flight at once without cancelling each other.
+   * End the transport fade in flight without moving the gain it reached.
+   * A scheduled ramp also drops the timer that would have run its completion
+   * callback, which is what stops a cancelled pause from pausing the playback
+   * a moment later.
    */
-  const applyVolume = useCallback(
-    (override?: number) => {
-      const volume = override ?? store.getState().playlistPlayback.volume;
-      const transport = transportFadeRef.current;
-      trackRef.current?.volume(volume * trackFadeRef.current * transport);
-      outgoingRef.current?.volume(volume * outgoingFadeRef.current * transport);
-    },
-    [store],
-  );
-
   const stopTransportFade = useCallback(() => {
     if (transportRef.current !== null) {
       clearInterval(transportRef.current);
       transportRef.current = null;
     }
-  }, []);
+    if (transportEndRef.current !== null) {
+      clearTimeout(transportEndRef.current);
+      transportEndRef.current = null;
+    }
+    if (!transportAutomatedRef.current) {
+      return;
+    }
+    transportAutomatedRef.current = false;
+    const track = trackRef.current;
+    const outgoing = outgoingRef.current;
+    // Every live instance is ramped together so either one has the gain the
+    // transport reached
+    let gain: number | null = null;
+    if (track) {
+      gain = track.holdGain("transport");
+      track.setGain("transport", 1);
+    }
+    if (outgoing) {
+      const outgoingGain = outgoing.holdGain("transport");
+      gain = gain ?? outgoingGain;
+      outgoing.setGain("transport", 1);
+    }
+    if (gain !== null) {
+      transportFadeRef.current = gain;
+    }
+    applyVolume();
+  }, [applyVolume]);
 
   /** Drop any transport fade in flight and return to full gain */
   const resetTransport = useCallback(() => {
@@ -123,16 +202,30 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
   }, [stopTransportFade]);
 
   /**
+   * Whether every live instance can have its gain scheduled on the audio clock.
+   * One that can't, a remote URL that may not be routable through Web Audio,
+   * drops the whole fade back to the stepped path: the two sides of a cross
+   * fade have to be driven the same way to stay in step with each other.
+   */
+  const canAutomate = useCallback(() => {
+    const track = trackRef.current;
+    const outgoing = outgoingRef.current;
+    if (!track && !outgoing) {
+      return false;
+    }
+    return (!track || track.routable) && (!outgoing || outgoing.routable);
+  }, []);
+
+  /**
    * Ramp the transport gain to `target` and run `onComplete` once it arrives.
    * The duration is scaled by the distance left to cover so that a fade which
    * is reversed part way through doesn't crawl back over the remainder.
    */
   const rampTransport = useCallback(
     (target: number, onComplete?: () => void) => {
-      if (
-        transportRef.current !== null &&
-        transportTargetRef.current === target
-      ) {
+      const fading =
+        transportRef.current !== null || transportEndRef.current !== null;
+      if (fading && transportTargetRef.current === target) {
         // Already heading there, let the fade in flight finish the job so that
         // a repeated request can't restart the ramp from part way down
         return;
@@ -146,6 +239,37 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
         return;
       }
       const duration = TRANSPORT_FADE * distance;
+      // Raised cosine so the ramp leaves and arrives at rest. A linear ramp
+      // hinges at both ends, which is audible as a chirp on a sustained note
+      const shape = (progress: number) =>
+        from + (target - from) * ((1 - Math.cos(progress * Math.PI)) / 2);
+      if (canAutomate()) {
+        const start = audioContextTime();
+        transportAutomatedRef.current = true;
+        // Hand the transport gain over to the graph before it is scheduled
+        // there, so that the gain is never counted twice
+        applyVolume();
+        trackRef.current?.scheduleGain(
+          "transport",
+          start,
+          duration / 1000,
+          shape,
+        );
+        outgoingRef.current?.scheduleGain(
+          "transport",
+          start,
+          duration / 1000,
+          shape,
+        );
+        // A scheduled ramp has nothing to report its own arrival, so the
+        // callback is run by a timer that `stopTransportFade` clears with it
+        transportEndRef.current = setTimeout(() => {
+          transportEndRef.current = null;
+          transportFadeRef.current = target;
+          onComplete?.();
+        }, duration);
+        return;
+      }
       let elapsed = 0;
       let prevTime = performance.now();
       function step() {
@@ -153,10 +277,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
         elapsed += time - prevTime;
         prevTime = time;
         const progress = Math.min(elapsed / duration, 1);
-        // Raised cosine so the ramp leaves and arrives at rest. A linear ramp
-        // hinges at both ends, which is audible as a chirp on a sustained note
-        const eased = (1 - Math.cos(progress * Math.PI)) / 2;
-        transportFadeRef.current = from + (target - from) * eased;
+        transportFadeRef.current = shape(progress);
         applyVolume();
         if (progress >= 1) {
           stopTransportFade();
@@ -168,7 +289,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
       transportRef.current = setInterval(step, FADE_STEP);
       step();
     },
-    [applyVolume, stopTransportFade],
+    [applyVolume, stopTransportFade, canAutomate],
   );
 
   const removeOutgoing = useCallback(() => {
@@ -191,10 +312,143 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     }
   }, []);
 
+  /**
+   * Schedule the rest of the equal power cross fade on the audio clock.
+   * `from` is how much of the fade is already behind it, which is how a fade
+   * that was held over a pause picks up exactly where it stopped.
+   */
+  const scheduleFade = useCallback(
+    (from: number) => {
+      const track = trackRef.current;
+      const outgoing = outgoingRef.current;
+      const outgoingStart = outgoingStartFadeRef.current;
+      // The progress of the segment being scheduled maps onto the progress of
+      // the cross fade as a whole
+      const at = (progress: number) => from + (1 - from) * progress;
+      const trackShape = (progress: number) =>
+        Math.sin((at(progress) * Math.PI) / 2);
+      const outgoingShape = (progress: number) =>
+        outgoingStart * Math.cos((at(progress) * Math.PI) / 2);
+
+      fadeProgressRef.current = from;
+      fadeAutomatedRef.current = true;
+      // The fade gains are applied in the graph from here, so they come back
+      // out of the volume that is pushed to each track
+      applyVolume();
+
+      if (!track?.playing() && !outgoing?.playing()) {
+        // Scheduled automation runs on the audio clock whatever the playback
+        // is doing, so a fade that isn't being heard is pinned where it
+        // reached and is scheduled again once the playback resumes
+        track?.setGain("fade", trackShape(0));
+        outgoing?.setGain("fade", outgoingShape(0));
+        return;
+      }
+
+      const remaining = Math.max(fadeDurationRef.current * (1 - from), 0);
+      fadeStartRef.current = audioContextTime();
+      track?.scheduleGain(
+        "fade",
+        fadeStartRef.current,
+        remaining / 1000,
+        trackShape,
+      );
+      outgoing?.scheduleGain(
+        "fade",
+        fadeStartRef.current,
+        remaining / 1000,
+        outgoingShape,
+      );
+      fadeEndRef.current = setTimeout(() => {
+        fadeEndRef.current = null;
+        fadeAutomatedRef.current = false;
+        trackFadeRef.current = 1;
+        outgoingFadeRef.current = 0;
+        trackRef.current?.setGain("fade", 1);
+        outgoingRef.current?.setGain("fade", 1);
+        applyVolume();
+        removeOutgoing();
+      }, remaining);
+    },
+    [applyVolume, removeOutgoing],
+  );
+
+  /**
+   * Hold a scheduled cross fade where it has reached while nothing is heard.
+   * The stepped path does this by not advancing its own clock, automation has
+   * to be taken down and put back up by `resumeFade`.
+   */
+  const holdFade = useCallback(() => {
+    if (!fadeAutomatedRef.current || fadeEndRef.current === null) {
+      return;
+    }
+    clearTimeout(fadeEndRef.current);
+    fadeEndRef.current = null;
+    const from = fadeProgressRef.current;
+    const remaining = fadeDurationRef.current * (1 - from);
+    const elapsed = (audioContextTime() - fadeStartRef.current) * 1000;
+    const progress = remaining <= 0 ? 1 : Math.min(elapsed / remaining, 1);
+    fadeProgressRef.current = from + (1 - from) * progress;
+    trackRef.current?.holdGain("fade");
+    outgoingRef.current?.holdGain("fade");
+  }, []);
+
+  /** Pick a held cross fade back up from the point the hold left it at */
+  const resumeFade = useCallback(() => {
+    if (!fadeAutomatedRef.current || fadeEndRef.current !== null) {
+      return;
+    }
+    scheduleFade(fadeProgressRef.current);
+  }, [scheduleFade]);
+
+  /**
+   * Cross fade the outgoing track out and the current track in, at equal power.
+   * When every live instance is routable the curve is scheduled on the audio
+   * clock, which moves the gain per sample. Everything else is hand stepped:
+   * a media element's volume is all there is to move for a track that can't be
+   * routed through Web Audio, and the fade a media element can run itself is
+   * linear only, which dips by around -3dB at the midpoint, and is cancelled
+   * by the volume slider.
+   */
+  const startFade = useCallback(
+    (duration: number) => {
+      stopFade();
+      fadeDurationRef.current = duration;
+      if (canAutomate()) {
+        scheduleFade(0);
+        return;
+      }
+      let elapsed = 0;
+      let prevTime = performance.now();
+      function step() {
+        const time = performance.now();
+        const delta = time - prevTime;
+        prevTime = time;
+        // Don't advance the fade while the playback is paused
+        if (trackRef.current?.playing() || outgoingRef.current?.playing()) {
+          elapsed += delta;
+        }
+        const progress = duration <= 0 ? 1 : Math.min(elapsed / duration, 1);
+        trackFadeRef.current = Math.sin((progress * Math.PI) / 2);
+        outgoingFadeRef.current =
+          outgoingStartFadeRef.current * Math.cos((progress * Math.PI) / 2);
+        applyVolume();
+        if (progress >= 1) {
+          stopFade();
+          trackFadeRef.current = 1;
+          removeOutgoing();
+        }
+      }
+      fadeRef.current = setInterval(step, FADE_STEP);
+      step();
+    },
+    [applyVolume, stopFade, removeOutgoing, canAutomate, scheduleFade],
+  );
+
   const removePreload = useCallback(() => {
     const preload = preloadRef.current;
     preloadRef.current = null;
-    preload?.howl.unload();
+    preload?.track.unload();
   }, []);
 
   /**
@@ -240,42 +494,6 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     [store],
   );
 
-  /**
-   * Hand step an equal power cross fade between the outgoing and current track.
-   * howl.fade() is linear only, which dips by around -3dB at the midpoint, and
-   * it is cancelled by howl.volume() which the volume slider calls on every
-   * tick, so the gain is stepped here and applied as master volume * fade gain.
-   */
-  const startFade = useCallback(
-    (duration: number) => {
-      stopFade();
-      let elapsed = 0;
-      let prevTime = performance.now();
-      function step() {
-        const time = performance.now();
-        const delta = time - prevTime;
-        prevTime = time;
-        // Don't advance the fade while the playback is paused
-        if (trackRef.current?.playing() || outgoingRef.current?.playing()) {
-          elapsed += delta;
-        }
-        const progress = duration <= 0 ? 1 : Math.min(elapsed / duration, 1);
-        trackFadeRef.current = Math.sin((progress * Math.PI) / 2);
-        outgoingFadeRef.current =
-          outgoingStartFadeRef.current * Math.cos((progress * Math.PI) / 2);
-        applyVolume();
-        if (progress >= 1) {
-          stopFade();
-          trackFadeRef.current = 1;
-          removeOutgoing();
-        }
-      }
-      fadeRef.current = setInterval(step, FADE_STEP);
-      step();
-    },
-    [applyVolume, stopFade, removeOutgoing],
-  );
-
   /** Load the next track in the queue so its decode latency doesn't reopen the gap */
   const preloadNextTrack = useCallback(() => {
     const move = getQueueMove(1);
@@ -287,44 +505,46 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     }
     removePreload();
     try {
-      const howl = new Howl({
+      const track = new WebAudioTrack({
         src: move.track.url,
-        html5: true,
         mute: store.getState().playlistPlayback.muted,
         volume: 0,
       });
-      // A howl that failed to load stays in the `loading` state and can never
-      // fire `load` or `loaderror` again, so it has to be dropped here rather
-      // than handed to `play` where it would stall the playback for good
-      howl.once("loaderror", () => {
-        if (preloadRef.current?.howl === howl) {
+      // A track that failed to load can never report a load again, so it has
+      // to be dropped here rather than handed to `play` where it would stall
+      // the playback for good
+      track.once("loaderror", () => {
+        if (preloadRef.current?.track === track) {
           preloadRef.current = null;
         }
-        howl.unload();
+        track.unload();
       });
-      preloadRef.current = { id: move.track.id, howl };
+      preloadRef.current = { id: move.track.id, track };
     } catch {
       // A track that fails to preload is loaded again when it starts playing
       preloadRef.current = null;
     }
   }, [getQueueMove, removePreload, store]);
 
-  /** Take the preloaded howl for this track if there is a usable one */
-  const takePreloadedTrack = useCallback((track: Track): Howl | null => {
-    const preload = preloadRef.current;
-    preloadRef.current = null;
-    if (!preload) {
-      return null;
-    }
-    // Only a howl that finished loading is safe to reuse: one that is still
-    // loading, or that failed to load, would leave `play` waiting on a `load`
-    // event that may never arrive
-    if (preload.id !== track.id || preload.howl.state() !== "loaded") {
-      preload.howl.unload();
-      return null;
-    }
-    return preload.howl;
-  }, []);
+  /** Take the preloaded instance for this track if there is a usable one */
+  const takePreloadedTrack = useCallback(
+    (track: Track): WebAudioTrack | null => {
+      const preload = preloadRef.current;
+      preloadRef.current = null;
+      if (!preload) {
+        return null;
+      }
+      // Only an instance that finished loading is safe to reuse: one that is
+      // still loading, or that failed to load, would leave `play` waiting on a
+      // load that may never arrive
+      if (preload.id !== track.id || preload.track.state() !== "loaded") {
+        preload.track.unload();
+        return null;
+      }
+      return preload.track;
+    },
+    [],
+  );
 
   const play = useCallback(
     (track: Track) => {
@@ -360,21 +580,20 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
       }
 
       try {
-        const howl =
+        const playback =
           takePreloadedTrack(track) ||
-          new Howl({
+          new WebAudioTrack({
             src: track.url,
-            html5: true,
             mute: store.getState().playlistPlayback.muted,
             volume: 0,
           });
 
-        trackRef.current = howl;
+        trackRef.current = playback;
         const handleLoad = () => {
           dispatch(
             playTrack({
               track,
-              duration: Math.floor(howl.duration()),
+              duration: Math.floor(playback.duration()),
             }),
           );
           // Fade out previous track and fade in new track
@@ -390,34 +609,36 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
             animationRef.current = requestAnimationFrame(animatePlayback);
             // Limit update to 1 time per second
             const delta = time - prevTime;
-            if (howl.playing() && delta > 1000) {
-              dispatch(updatePlayback(Math.floor(howl.seek())));
+            if (playback.playing() && delta > 1000) {
+              dispatch(updatePlayback(Math.floor(playback.seek())));
               prevTime = time;
             }
           }
           animationRef.current = requestAnimationFrame(animatePlayback);
         };
 
-        howl.on("end", () => handleEndRef.current());
-        // Arming from the play event keeps the timer in step with pause and resume
-        howl.on("play", () => armCrossFadeRef.current());
-        howl.on("pause", () => clearCrossFade());
-        // Howler pauses the sound before it seeks and restarts it internally,
-        // which emits no `play` event, so the timer is re-armed from `seek`
-        howl.on("seek", () => armCrossFadeRef.current());
+        playback.on("end", () => handleEndRef.current());
+        playback.on("play", () => {
+          // A cross fade held because nothing was being heard starts running
+          // from here, the moment the samples actually start moving again
+          resumeFade();
+          // Arming from the play event keeps the timer in step with pause and resume
+          armCrossFadeRef.current();
+        });
+        playback.on("pause", () => clearCrossFade());
+        // A seek pauses and restarts the playback internally, which reports no
+        // play, so the timer is re-armed from the seek instead
+        playback.on("seek", () => armCrossFadeRef.current());
 
-        howl.on("loaderror", error);
+        playback.on("loaderror", error);
 
-        howl.on("playerror", error);
+        playback.on("playerror", error);
 
-        const sound = (howl as any)._sounds[0];
-        if (!sound) {
-          error();
-        } else if (howl.state() === "loaded") {
-          // A preloaded track has already fired its load event
+        if (playback.state() === "loaded") {
+          // A preloaded track has already reported its load
           handleLoad();
         } else {
-          howl.once("load", handleLoad);
+          playback.once("load", handleLoad);
         }
       } catch {
         error();
@@ -432,6 +653,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
       removeOutgoing,
       resetTransport,
       takePreloadedTrack,
+      resumeFade,
     ],
   );
 
@@ -450,19 +672,19 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     removeOutgoing();
     // Reset the fade gain so the track isn't left quiet if it's played again
     trackFadeRef.current = 1;
-    const howl = trackRef.current;
-    if (!howl?.playing()) {
+    const track = trackRef.current;
+    if (!track?.playing()) {
       // Nothing audible to ramp down
       resetTransport();
       applyVolume();
-      howl?.stop();
+      track?.stop();
       return;
     }
     // `playPause(false)` above reaches `pauseResume` through the store on the
     // next render. That ramp is towards the same gain as this one so it joins
     // this fade rather than starting its own, and the stop below wins
     rampTransport(0, () => {
-      howl.stop();
+      track.stop();
       resetTransport();
       applyVolume();
     });
@@ -498,8 +720,8 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
    */
   const armCrossFade = useCallback(() => {
     clearCrossFade();
-    const howl = trackRef.current;
-    if (!howl) {
+    const track = trackRef.current;
+    if (!track) {
       return;
     }
     const crossfade = store.getState().playlistPlayback.crossfade;
@@ -507,16 +729,16 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
       // Cross fading is disabled, the end event moves to the next track
       return;
     }
-    if (!howl.playing()) {
+    if (!track.playing()) {
       // Re-armed from the play event once the playback resumes
       return;
     }
-    const duration = howl.duration();
-    // duration can be 0 or Infinity in html5 mode until the metadata has loaded
+    const duration = track.duration();
+    // duration can be 0 or Infinity until the metadata has loaded
     if (!Number.isFinite(duration) || duration <= 0) {
       return;
     }
-    const progress = howl.seek();
+    const progress = track.seek();
     const remaining =
       duration * 1000 - (Number.isFinite(progress) ? progress : 0) * 1000;
     if (remaining <= crossfade) {
@@ -564,8 +786,8 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
   }, [store, getQueueMove, seek, play, stop]);
 
   const previous = useCallback(() => {
-    const howl = trackRef.current;
-    if (!howl) {
+    const track = trackRef.current;
+    if (!track) {
       return;
     }
     const {
@@ -579,7 +801,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
       seek(0);
     } else {
       // Only go to previous if at the start of the track
-      const move = getQueueMove(howl.seek() < PREVIOUS_THRESHOLD ? -1 : 0);
+      const move = getQueueMove(track.seek() < PREVIOUS_THRESHOLD ? -1 : 0);
       if (move.type === "stop") {
         stop();
       } else if (move.type === "track") {
@@ -627,7 +849,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     }
   }, [store, getQueueMove, seek, play, stop]);
 
-  // Keep the handlers used by the howl events up to date
+  // Keep the handlers used by the track events up to date
   useEffect(() => {
     handleEndRef.current = handleEnd;
   }, [handleEnd]);
@@ -648,6 +870,10 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
       stopTransportFade();
       removePreload();
       removeOutgoing();
+      // Releases the element and the graph nodes the track is holding, which
+      // nothing else is going to come back for once the player is gone
+      trackRef.current?.unload();
+      trackRef.current = null;
       if (animationRef.current !== null) {
         cancelAnimationFrame(animationRef.current);
       }
@@ -656,14 +882,16 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
 
   const pauseResume = useCallback(
     (resume: boolean) => {
-      // Apply to all live instances so a cross fade can't leave a track playing
-      // uncontrolled. Howler creates a second sound when play is called on an
-      // already playing howl so only call it when it isn't playing.
+      // Apply to all live instances so a cross fade can't leave a track
+      // playing uncontrolled
       if (resume) {
         if (trackRef.current && !trackRef.current.playing()) {
           // Open the transport before the first samples are pulled so the
           // track can't be heard at full gain for a frame before the ramp
-          if (transportRef.current === null) {
+          if (
+            transportRef.current === null &&
+            transportEndRef.current === null
+          ) {
             applyVolume();
           }
           trackRef.current.play();
@@ -676,6 +904,10 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
             outgoingRef.current.play();
           }
         }
+        // A cross fade held over the pause runs again from here. The play
+        // event does this as well, for a resume that didn't come through the
+        // transport, and whichever gets there first wins
+        resumeFade();
         // Ramp back up from wherever the pause left the transport. A track
         // that is starting rather than resuming is already at full gain, so
         // this is a no op there and the cross fade does the fade in
@@ -693,16 +925,19 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
             outgoingPausedRef.current = true;
             outgoingRef.current.pause();
           }
+          // Nothing is being heard from here, so a cross fade scheduled on the
+          // audio clock has to be held rather than left to run on without it
+          holdFade();
         });
       }
     },
-    [applyVolume, rampTransport, stopTransportFade],
+    [applyVolume, rampTransport, stopTransportFade, resumeFade, holdFade],
   );
 
   const mute = useCallback((muted: boolean) => {
     trackRef.current?.mute(muted);
     outgoingRef.current?.mute(muted);
-    preloadRef.current?.howl.mute(muted);
+    preloadRef.current?.track.mute(muted);
   }, []);
 
   const volume = useCallback(
