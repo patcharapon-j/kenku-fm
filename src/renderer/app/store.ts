@@ -6,6 +6,7 @@ import bookmarksReducer from "../features/bookmarks/bookmarksSlice";
 import tabsReducer from "../features/tabs/tabsSlice";
 import playerReducer from "../features/player/playerSlice";
 import inputReducer from "../features/input/inputSlice";
+import captureReducer from "../features/capture/captureSlice";
 
 import {
   persistStore,
@@ -20,14 +21,32 @@ import {
 } from "redux-persist";
 import storage from "redux-persist/lib/storage";
 
+// Both of these slices are mostly live device and connection state, so only the levels the
+// user has dialed in are carried between runs
+const persistedInputReducer = persistReducer(
+  { key: "input", version: 1, storage, whitelist: ["gains"] },
+  inputReducer,
+);
+
+const persistedOutputReducer = persistReducer(
+  {
+    key: "output",
+    version: 1,
+    storage,
+    whitelist: ["monitorGain", "monitorDeviceId"],
+  },
+  outputReducer,
+);
+
 const rootReducer = combineReducers({
   connection: connectionReducer,
-  output: outputReducer,
+  output: persistedOutputReducer,
   settings: settingsReducer,
   bookmarks: bookmarksReducer,
   tabs: tabsReducer,
   player: playerReducer,
-  input: inputReducer,
+  input: persistedInputReducer,
+  capture: captureReducer,
 });
 
 const migrations: any = {

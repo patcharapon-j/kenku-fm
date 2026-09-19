@@ -20,6 +20,7 @@ import {
   increasePlayingMedia,
 } from "../player/playerSlice";
 import { editBookmark } from "../bookmarks/bookmarksSlice";
+import { UNITY_GAIN } from "../../common/audioCapture";
 
 /**
  * Safely parse a URL string. Returns a URL object if valid, otherwise null.
@@ -49,10 +50,21 @@ export function Tabs() {
   );
 
   useEffect(() => {
+    // A view's capture node is rebuilt whenever the view loads, so the stored level is sent
+    // again rather than trusting the capture side to remember it
+    function resendGain(viewId: number) {
+      const tab =
+        viewId === player.tab.id ? player.tab : tabs.tabs.byId[viewId];
+      if (tab) {
+        window.kenku.setViewGain(viewId, tab.gain);
+      }
+    }
+
     window.kenku.on("BROWSER_VIEW_DID_NAVIGATE", (args) => {
       const viewId = args[0];
       const url = args[1];
       dispatch(editTab({ id: viewId, url }));
+      resendGain(viewId);
     });
     window.kenku.on("BROWSER_VIEW_TITLE_UPDATED", (args) => {
       const viewId = args[0];
@@ -118,6 +130,7 @@ export function Tabs() {
     });
     window.kenku.on("BROWSER_VIEW_MEDIA_STARTED_PLAYING", (args) => {
       const viewId = args[0];
+      resendGain(viewId);
       if (viewId === player.tab.id) {
         dispatch(increasePlayingMedia());
       } else {
@@ -150,6 +163,7 @@ export function Tabs() {
           icon: "",
           playingMedia: 0,
           muted: false,
+          gain: UNITY_GAIN,
         }),
       );
       dispatch(selectTab(id));
@@ -179,7 +193,7 @@ export function Tabs() {
       window.kenku.removeAllListeners("BROWSER_VIEW_NEW_TAB");
       window.kenku.removeAllListeners("BROWSER_VIEW_CLOSE_TAB");
     };
-  }, [player.tab.id, tabs]);
+  }, [player.tab, tabs]);
 
   useEffect(() => {
     if (tabs.selectedTab) {

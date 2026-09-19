@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
+import { Device } from "../input/inputSlice";
+
 export type VoiceChannel = {
   id: string;
   name: string;
@@ -15,11 +17,20 @@ export type Guild = {
 export interface OutputState {
   guilds: Guild[];
   outputs: string[];
+  /** Audio outputs available for local monitoring */
+  monitorDevices: Device[];
+  /** Local monitoring level, 0 to 1 */
+  monitorGain: number;
+  /** An empty device id follows the system default output */
+  monitorDeviceId: string;
 }
 
 const initialState: OutputState = {
   guilds: [],
   outputs: ["local"],
+  monitorDevices: [],
+  monitorGain: 1,
+  monitorDeviceId: "",
 };
 
 export const outputSlice = createSlice({
@@ -43,10 +54,26 @@ export const outputSlice = createSlice({
         (channel) => channel !== action.payload
       );
     },
+    setMonitorDevices: (state, action: PayloadAction<Device[]>) => {
+      state.monitorDevices = action.payload;
+    },
+    setMonitorGain: (state, action: PayloadAction<number>) => {
+      state.monitorGain = action.payload;
+    },
+    setMonitorDeviceId: (state, action: PayloadAction<string>) => {
+      state.monitorDeviceId = action.payload;
+    },
   },
 });
 
-export const { setGuilds, setOutput, addOutput, removeOutput } =
-  outputSlice.actions;
+export const {
+  setGuilds,
+  setOutput,
+  addOutput,
+  removeOutput,
+  setMonitorDevices,
+  setMonitorGain,
+  setMonitorDeviceId,
+} = outputSlice.actions;
 
 export default outputSlice.reducer;

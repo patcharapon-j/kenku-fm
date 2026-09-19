@@ -13,6 +13,7 @@ import { Bookmark, removeBookmark } from "./bookmarksSlice";
 import { BookmarkSettings } from "./BookmarkSettings";
 import { addTab, selectTab } from "../tabs/tabsSlice";
 import { getBounds } from "../tabs/getBounds";
+import { UNITY_GAIN } from "../../common/audioCapture";
 
 type BookmarkListItemProps = {
   bookmark: Bookmark;
@@ -41,6 +42,7 @@ export function BookmarkListItem({ bookmark, shadow }: BookmarkListItemProps) {
         icon: bookmark.icon,
         playingMedia: 0,
         muted: false,
+        gain: UNITY_GAIN,
       }),
     );
     dispatch(selectTab(id));

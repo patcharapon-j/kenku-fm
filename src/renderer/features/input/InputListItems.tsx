@@ -10,9 +10,16 @@ import ExpandMore from "@mui/icons-material/ExpandMoreRounded";
 
 import { RootState } from "../../app/store";
 import { useSelector, useDispatch } from "react-redux";
-import { addInput, removeInput, setDevices, setInput } from "./inputSlice";
+import {
+  addInput,
+  removeInput,
+  setDevices,
+  setInput,
+  setInputGain,
+} from "./inputSlice";
 
 import { InputListItem } from "./InputListItem";
+import { UNITY_GAIN } from "../../common/audioCapture";
 
 export function InputListItems() {
   const [open, setOpen] = useState(true);
@@ -48,6 +55,18 @@ export function InputListItems() {
     };
   }, []);
 
+  // A device starts at unity until the capture side is told otherwise, so the stored level
+  // follows every start of its stream
+  function startCapture(deviceId: string) {
+    window.kenku.startExternalAudioCapture(deviceId);
+    window.kenku.setExternalGain(deviceId, input.gains[deviceId] ?? UNITY_GAIN);
+  }
+
+  function handleGainChange(deviceId: string, gain: number) {
+    dispatch(setInputGain({ deviceId, gain }));
+    window.kenku.setExternalGain(deviceId, gain);
+  }
+
   function handleInputChange(deviceId: string) {
     if (settings.multipleInputsEnabled) {
       // Already selected
@@ -56,7 +75,7 @@ export function InputListItems() {
         window.kenku.stopExternalAudioCapture(deviceId);
       } else {
         dispatch(addInput(deviceId));
-        window.kenku.startExternalAudioCapture(deviceId);
+        startCapture(deviceId);
       }
     } else {
       const prev = input.inputs[0];
@@ -73,7 +92,7 @@ export function InputListItems() {
       }
       // Start new capture
       dispatch(addInput(deviceId));
-      window.kenku.startExternalAudioCapture(deviceId);
+      startCapture(deviceId);
     }
   }
 
@@ -96,7 +115,9 @@ export function InputListItems() {
                 settings.multipleInputsEnabled &&
                 input.inputs.includes(device.id)
               }
+              gain={input.gains[device.id] ?? UNITY_GAIN}
               onClick={handleInputChange}
+              onGainChange={handleGainChange}
             />
           ))}
         </List>

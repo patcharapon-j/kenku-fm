@@ -3,6 +3,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { Tab } from "../tabs/tabsSlice";
 
 import icon from "../../../assets/player-icon.png";
+import { UNITY_GAIN } from "../../common/audioCapture";
 
 export interface PlayerState {
   tab: Tab & { preload: string };
@@ -18,6 +19,7 @@ const initialState: PlayerState = {
     title: "Kenku Player",
     playingMedia: 0,
     muted: false,
+    gain: UNITY_GAIN,
   },
   remoteEnabled: false,
 };
@@ -41,6 +43,9 @@ export const playerSlice = createSlice({
     setMuted: (state, action: PayloadAction<boolean>) => {
       state.tab.muted = action.payload;
     },
+    setGain: (state, action: PayloadAction<number>) => {
+      state.tab.gain = action.payload;
+    },
   },
 });
 
@@ -50,6 +55,7 @@ export const {
   increasePlayingMedia,
   decreasePlayingMedia,
   setMuted,
+  setGain,
 } = playerSlice.actions;
 
 export default playerSlice.reducer;

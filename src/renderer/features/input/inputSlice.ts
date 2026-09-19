@@ -8,11 +8,14 @@ export type Device = {
 export interface OutputState {
   devices: Device[];
   inputs: string[];
+  /** Level in the capture mix per device id, 1 is unity */
+  gains: Record<string, number>;
 }
 
 const initialState: OutputState = {
   devices: [],
   inputs: [],
+  gains: {},
 };
 
 export const inputSlice = createSlice({
@@ -34,10 +37,16 @@ export const inputSlice = createSlice({
     removeInput: (state, action: PayloadAction<string>) => {
       state.inputs = state.inputs.filter((id) => id !== action.payload);
     },
+    setInputGain: (
+      state,
+      action: PayloadAction<{ deviceId: string; gain: number }>,
+    ) => {
+      state.gains[action.payload.deviceId] = action.payload.gain;
+    },
   },
 });
 
-export const { setDevices, setInput, addInput, removeInput } =
+export const { setDevices, setInput, addInput, removeInput, setInputGain } =
   inputSlice.actions;
 
 export default inputSlice.reducer;
