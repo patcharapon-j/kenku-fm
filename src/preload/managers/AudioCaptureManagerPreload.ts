@@ -53,6 +53,23 @@ const LIMITER_CEILING = 0.891;
 const RESUME_RAMP = 2;
 /** Time constant in seconds used when a gain is changed, to avoid a click */
 const GAIN_RAMP = 0.015;
+/**
+ * Loudness the normaliser aims the mix at, in LUFS
+ * Around where streaming services land, which is loud enough to sit well in a
+ * voice channel without leaving the limiter working constantly
+ */
+const NORMALIZE_TARGET_LUFS = -16;
+/** Most the normaliser may raise or lower the mix by, in dB */
+const NORMALIZE_MAX_GAIN_DB = 12;
+const NORMALIZE_MIN_GAIN_DB = -12;
+/**
+ * How fast the normaliser is allowed to move, in dB per second
+ * Coming down faster than it goes up is what keeps this a leveller rather than
+ * a compressor: something suddenly too loud is dealt with promptly, while a
+ * quiet passage is lifted slowly enough not to be heard happening
+ */
+const NORMALIZE_UP_DB_PER_SECOND = 1;
+const NORMALIZE_DOWN_DB_PER_SECOND = 6;
 /** Minimum time in ms between level reports, which only drive a meter */
 const LEVEL_REPORT_INTERVAL = 66;
 /**
@@ -102,6 +119,8 @@ type AudioBlock = {
   clipped: boolean;
   /** Lowest gain the limiter applied over the block, 1 when it did nothing */
   reduction: number;
+  /** Gain the loudness normaliser had in force, 1 when it is off or idle */
+  normalization: number;
 };
 
 /**
@@ -170,11 +189,18 @@ export class AudioCaptureManagerPreload {
   _framesPerBlock = 0;
   /** Time in ms that levels were last reported */
   _lastLevelReport = 0;
+  /**
+   * Whether the mix is levelled to a loudness target before it is broadcast
+   * Kept here so that it can be handed to a worklet created after this point,
+   * as the capture window builds a new one each time it loads
+   */
+  _normalize = false;
   /** Metering gathered from the blocks since the last report */
   _levelPeakLeft = 0;
   _levelPeakRight = 0;
   _levelClipped = false;
   _levelReduction = 1;
+  _levelNormalization = 1;
 
   /**
    * Create the Audio Context, setup the communication port and start the
@@ -241,6 +267,14 @@ export class AudioCaptureManagerPreload {
           lookahead: Math.round((SAMPLE_RATE * LIMITER_LOOKAHEAD) / 1000),
           releaseSamples: Math.round((SAMPLE_RATE * LIMITER_RELEASE) / 1000),
           ceiling: LIMITER_CEILING,
+          normalize: {
+            enabled: this._normalize,
+            targetLufs: NORMALIZE_TARGET_LUFS,
+            maxGainDb: NORMALIZE_MAX_GAIN_DB,
+            minGainDb: NORMALIZE_MIN_GAIN_DB,
+            upDbPerSecond: NORMALIZE_UP_DB_PER_SECOND,
+            downDbPerSecond: NORMALIZE_DOWN_DB_PER_SECOND,
+          },
         },
       },
     );
@@ -524,6 +558,7 @@ export class AudioCaptureManagerPreload {
     this._levelPeakRight = Math.max(this._levelPeakRight, block.peakRight);
     this._levelClipped = this._levelClipped || block.clipped;
     this._levelReduction = Math.min(this._levelReduction, block.reduction);
+    this._levelNormalization = block.normalization;
 
     const now = Date.now();
     if (now - this._lastLevelReport < LEVEL_REPORT_INTERVAL) {
@@ -538,6 +573,12 @@ export class AudioCaptureManagerPreload {
       // the number of dB the limiter took off
       reduction:
         this._levelReduction >= 1 ? 0 : 20 * Math.log10(this._levelReduction),
+      // Unlike the others this is the gain in force right now rather than a
+      // worst case, as it is a slow moving level rather than something to catch
+      normalization:
+        this._levelNormalization > 0
+          ? 20 * Math.log10(this._levelNormalization)
+          : 0,
     });
     this._levelPeakLeft = 0;
     this._levelPeakRight = 0;
@@ -581,6 +622,20 @@ export class AudioCaptureManagerPreload {
     if (output) {
       this._rampGain(output, gain);
     }
+  }
+
+  /**
+   * Turn loudness levelling of the broadcast on or off
+   *
+   * Sources reach the master bus at whatever level they happen to be: a
+   * mastered file, a video in a tab and a soundboard hit have no reason to
+   * agree. With this on the mix is measured and moved towards a common
+   * loudness, so a listener isn't reaching for their volume between tracks
+   */
+  setNormalize(enabled: boolean): void {
+    this._normalize = enabled;
+    // A worklet that hasn't been created yet is given this when it is
+    this._pcmStreamNode?.port.postMessage({ type: "normalize", enabled });
   }
 
   /** Set the level of the local monitoring, which the broadcast never hears */

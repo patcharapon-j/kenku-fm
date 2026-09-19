@@ -163,6 +163,10 @@ const api = {
   setExternalGain: (deviceId: string, gain: number) => {
     ipcRenderer.send("AUDIO_CAPTURE_SET_EXTERNAL_GAIN", deviceId, gain);
   },
+  /** Level the broadcast to a common loudness so sources don't jump about */
+  setNormalize: (enabled: boolean) => {
+    ipcRenderer.send("AUDIO_CAPTURE_SET_NORMALIZE", enabled);
+  },
   /** Set the level of the local monitoring, which the broadcast never hears */
   setMonitorGain: (gain: number) => {
     ipcRenderer.send("AUDIO_CAPTURE_SET_MONITOR_GAIN", gain);

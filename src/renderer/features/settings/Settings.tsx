@@ -35,6 +35,7 @@ import {
   setRemotePort,
   setURLBarEnabled,
   setStreamingMode,
+  setNormalizeOutput,
   StreamingMode,
 } from "./settingsSlice";
 import { setEncoder } from "../capture/captureSlice";
@@ -249,6 +250,7 @@ export function Settings({ open, onClose }: SettingsProps) {
       dispatch(setEncoder(captureEncoder));
     });
     window.kenku.startAudioCapture(settings.streamingMode);
+    window.kenku.setNormalize(settings.normalizeOutput);
 
     return () => {
       window.kenku.removeAllListeners("AUDIO_CAPTURE_ENCODER");
@@ -278,6 +280,25 @@ export function Settings({ open, onClose }: SettingsProps) {
           </FormHelperText>
         )}
       </FormControl>
+      <FormGroup>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings.normalizeOutput}
+              onChange={handleNormalizeOutputToggle}
+            />
+          }
+          sx={{ marginLeft: "-8px" }}
+          label={
+            <Typography variant="caption">Normalize Output Volume</Typography>
+          }
+        />
+        <FormHelperText sx={{ marginTop: "-4px" }}>
+          Evens out the loudness of files, tabs and soundboards so listeners
+          aren&apos;t reaching for their volume between sources. Quiet material
+          is raised slowly, so deliberately soft passages will come up too.
+        </FormHelperText>
+      </FormGroup>
       {encoder &&
         (encoder.encoding === "opus-js" ? (
           <Alert severity="warning" sx={{ py: 0 }}>
@@ -293,6 +314,14 @@ export function Settings({ open, onClose }: SettingsProps) {
         ))}
     </Stack>
   );
+
+  function handleNormalizeOutputToggle() {
+    const enabled = !settings.normalizeOutput;
+    dispatch(setNormalizeOutput(enabled));
+    // Applied live rather than on restart, the normaliser just stops moving
+    // the gain and slides back to unity
+    window.kenku.setNormalize(enabled);
+  }
 
   function handleShowControlsToggle() {
     dispatch(setURLBarEnabled(!settings.urlBarEnabled));

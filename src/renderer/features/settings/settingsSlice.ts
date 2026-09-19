@@ -13,6 +13,7 @@ export interface SettingsState {
   multipleInputsEnabled: boolean;
   multipleOutputsEnabled: boolean;
   streamingMode: StreamingMode;
+  normalizeOutput: boolean;
 }
 
 const initialState: SettingsState = {
@@ -25,6 +26,7 @@ const initialState: SettingsState = {
   multipleInputsEnabled: false,
   multipleOutputsEnabled: false,
   streamingMode: "balanced",
+  normalizeOutput: false,
 };
 
 export const connectionSlice = createSlice({
@@ -58,6 +60,9 @@ export const connectionSlice = createSlice({
     setStreamingMode: (state, action: PayloadAction<StreamingMode>) => {
       state.streamingMode = action.payload;
     },
+    setNormalizeOutput: (state, action: PayloadAction<boolean>) => {
+      state.normalizeOutput = action.payload;
+    },
   },
 });
 
@@ -71,6 +76,7 @@ export const {
   setMultipleInputsEnabled,
   setMultipleOutputsEnabled,
   setStreamingMode,
+  setNormalizeOutput,
 } = connectionSlice.actions;
 
 export default connectionSlice.reducer;

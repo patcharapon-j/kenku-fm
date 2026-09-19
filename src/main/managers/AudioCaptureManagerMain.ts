@@ -27,6 +27,8 @@ export type AudioLevels = {
   clipped: boolean;
   /** Limiter gain reduction in dB, negative, 0 when the limiter is idle */
   reduction: number;
+  /** Loudness normaliser gain in dB, 0 when it is off or idle */
+  normalization: number;
 };
 
 type StreamStartOptions = {
@@ -191,6 +193,12 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
   _streamingMode?: string;
   /** Number of times the capture window has been reloaded after it has crashed */
   _captureWindowReloads = 0;
+  /**
+   * Whether the broadcast is levelled to a loudness target
+   * The capture window is where this is applied, so it has to be handed back
+   * to a window that has been reloaded along with the streaming mode
+   */
+  _normalize = false;
 
   constructor() {
     super();
@@ -229,6 +237,7 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     ipcMain.on("AUDIO_CAPTURE_SET_VIEW_GAIN", this._handleSetViewGain);
     ipcMain.on("AUDIO_CAPTURE_SET_EXTERNAL_GAIN", this._handleSetExternalGain);
     ipcMain.on("AUDIO_CAPTURE_SET_MONITOR_GAIN", this._handleSetMonitorGain);
+    ipcMain.on("AUDIO_CAPTURE_SET_NORMALIZE", this._handleSetNormalize);
     ipcMain.on(
       "AUDIO_CAPTURE_SET_MONITOR_DEVICE",
       this._handleSetMonitorDevice
@@ -268,6 +277,7 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     ipcMain.off("AUDIO_CAPTURE_SET_VIEW_GAIN", this._handleSetViewGain);
     ipcMain.off("AUDIO_CAPTURE_SET_EXTERNAL_GAIN", this._handleSetExternalGain);
     ipcMain.off("AUDIO_CAPTURE_SET_MONITOR_GAIN", this._handleSetMonitorGain);
+    ipcMain.off("AUDIO_CAPTURE_SET_NORMALIZE", this._handleSetNormalize);
     ipcMain.off(
       "AUDIO_CAPTURE_SET_MONITOR_DEVICE",
       this._handleSetMonitorDevice
@@ -495,6 +505,10 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
       "AUDIO_CAPTURE_START",
       this._streamingMode
     );
+    this._browserWindow.webContents.send(
+      "AUDIO_CAPTURE_SET_NORMALIZE",
+      this._normalize
+    );
   };
 
   /**
@@ -569,6 +583,14 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     this._browserWindow.webContents.send(
       "AUDIO_CAPTURE_SET_MONITOR_GAIN",
       gain
+    );
+  };
+
+  _handleSetNormalize = (_: Electron.IpcMainEvent, enabled: boolean) => {
+    this._normalize = enabled;
+    this._browserWindow.webContents.send(
+      "AUDIO_CAPTURE_SET_NORMALIZE",
+      enabled
     );
   };
 

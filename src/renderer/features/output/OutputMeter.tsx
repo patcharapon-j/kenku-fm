@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useSelector } from "react-redux";
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
@@ -7,10 +8,12 @@ import Typography from "@mui/material/Typography";
 import {
   CaptureLevels,
   dbToMeterPercent,
+  MAX_NORMALIZE_DB,
   MAX_REDUCTION_DB,
   METER_FLOOR_DB,
   peakToDb,
 } from "../../common/audioCapture";
+import { RootState } from "../../app/store";
 
 /** Levels arrive at roughly 15Hz, so a longer gap than this means nothing is being captured */
 const LEVELS_TIMEOUT = 1000;
@@ -66,6 +69,11 @@ function MeterBar({
 
 export function OutputMeter() {
   const [capturing, setCapturing] = useState(false);
+  // A coarse setting rather than a level, so reading it here costs one render
+  // when it is toggled and nothing while the meter is running
+  const normalizeOutput = useSelector(
+    (state: RootState) => state.settings.normalizeOutput,
+  );
 
   const levelsRef = useRef<{ levels: CaptureLevels; time: number } | null>(
     null,
@@ -75,6 +83,8 @@ export function OutputMeter() {
   const clipRef = useRef<HTMLSpanElement>(null);
   const reductionRef = useRef<HTMLDivElement>(null);
   const reductionTextRef = useRef<HTMLSpanElement>(null);
+  const normalizeRef = useRef<HTMLDivElement>(null);
+  const normalizeTextRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     window.kenku.on("AUDIO_CAPTURE_LEVELS", (args) => {
@@ -115,7 +125,9 @@ export function OutputMeter() {
       rightDb = Math.max(rightDb - decay, METER_FLOOR_DB);
 
       let reduction = 0;
+      let normalization = 0;
       if (receiving) {
+        normalization = latest.levels.normalization;
         leftDb = Math.max(leftDb, peakToDb(latest.levels.peakLeft));
         rightDb = Math.max(rightDb, peakToDb(latest.levels.peakRight));
         reduction = latest.levels.reduction;
@@ -143,6 +155,23 @@ export function OutputMeter() {
         // Guard against a negative zero reading as "-0.0"
         const amount = reduction > -0.05 ? 0 : reduction;
         reductionTextRef.current.textContent = `${amount.toFixed(1)} dB`;
+      }
+      if (normalizeRef.current) {
+        // The normalizer cuts as well as boosts, so its bar grows out from the
+        // middle rather than from the left like the ones above it
+        const amount = Math.max(
+          -1,
+          Math.min(1, normalization / MAX_NORMALIZE_DB),
+        );
+        normalizeRef.current.style.left = `${50 + Math.min(amount, 0) * 50}%`;
+        normalizeRef.current.style.width = `${Math.abs(amount) * 50}%`;
+      }
+      if (normalizeTextRef.current) {
+        const amount =
+          normalization > -0.05 && normalization < 0.05 ? 0 : normalization;
+        normalizeTextRef.current.textContent = `${
+          amount > 0 ? "+" : ""
+        }${amount.toFixed(1)} dB`;
       }
     }
 
@@ -208,6 +237,44 @@ export function OutputMeter() {
             0.0 dB
           </Typography>
         </Stack>
+        {/* Only worth the room when the mix is actually being levelled */}
+        {normalizeOutput && (
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="caption" color="text.secondary">
+              Level
+            </Typography>
+            <Box
+              sx={{
+                position: "relative",
+                flexGrow: 1,
+                height: METER_HEIGHT,
+                borderRadius: METER_HEIGHT,
+                overflow: "hidden",
+                bgcolor: "rgba(0, 0, 0, 0.72)",
+              }}
+            >
+              <Box
+                ref={normalizeRef}
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  left: "50%",
+                  width: 0,
+                  bgcolor: "info.main",
+                }}
+              />
+            </Box>
+            <Typography
+              ref={normalizeTextRef}
+              variant="caption"
+              color="text.secondary"
+              sx={{ textAlign: "right" }}
+            >
+              +0.0 dB
+            </Typography>
+          </Stack>
+        )}
       </Stack>
     </Stack>
   );

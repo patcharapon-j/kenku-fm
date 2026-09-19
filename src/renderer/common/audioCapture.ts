@@ -6,6 +6,8 @@ export type CaptureLevels = {
   clipped: boolean;
   /** Limiter gain reduction in dB, negative while the limiter is working */
   reduction: number;
+  /** Loudness normalization gain in dB, 0 when it is off or idle */
+  normalization: number;
 };
 
 export type CaptureEncoding = "opus-webcodecs" | "opus-native" | "opus-js";
@@ -28,6 +30,8 @@ export const MAX_GAIN = 2;
 /** Quiet enough to read as silence without wasting most of the meter on inaudible detail */
 export const METER_FLOOR_DB = -60;
 /** Reduction past this point is a mix problem rather than the limiter doing its job */
+/** Range the normalizer is allowed to move the mix by, which bounds its meter */
+export const MAX_NORMALIZE_DB = 12;
 export const MAX_REDUCTION_DB = 20;
 
 export function peakToDb(peak: number): number {
