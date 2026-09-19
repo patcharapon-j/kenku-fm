@@ -69,6 +69,21 @@ const api = {
   },
   getPathForFile: (file: File) => {
     return webUtils.getPathForFile(file);
+  },
+  /**
+   * Convert a stored track URL into the one to actually play
+   * A `file://` URL is an opaque origin, so an element loaded from one can't be
+   * routed through Web Audio. The same file served over the app's own scheme
+   * can be, which is what lets playback be faded sample accurately. Anything
+   * that isn't a local file is left alone: a remote URL may not send the CORS
+   * headers that routing needs, and the failure mode there is silence
+   */
+  toMediaURL: (url: string): string => {
+    if (!url.startsWith("file://")) {
+      return url;
+    }
+    const filePath = decodeURIComponent(url.slice("file://".length));
+    return ipcRenderer.sendSync("PLAYER_GET_MEDIA_URL", filePath) as string;
   } 
 };
 

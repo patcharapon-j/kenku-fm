@@ -20,6 +20,7 @@ import InputLabel from "@mui/material/InputLabel";
 import Select, { SelectChangeEvent } from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import FormHelperText from "@mui/material/FormHelperText";
+import Alert from "@mui/material/Alert";
 
 import { RootState } from "../../app/store";
 import { useSelector, useDispatch } from "react-redux";
@@ -34,9 +35,19 @@ import {
   setRemotePort,
   setURLBarEnabled,
   setStreamingMode,
+  setNormalizeOutput,
   StreamingMode,
 } from "./settingsSlice";
+import { setEncoder } from "../capture/captureSlice";
+import { CaptureEncoder, encodingLabels } from "../../common/audioCapture";
 import { showWindowControls } from "../../common/showWindowControls";
+
+/** The buffering each mode asks for, so the trade off is visible before switching */
+const streamingModeDescriptions: Record<StreamingMode, string> = {
+  lowLatency: "20ms of buffering, least delay",
+  balanced: "60ms of buffering, recommended",
+  performance: "100ms of buffering, rides out CPU spikes",
+};
 
 type SettingsProps = {
   open: boolean;
@@ -46,6 +57,7 @@ type SettingsProps = {
 export function Settings({ open, onClose }: SettingsProps) {
   const connection = useSelector((state: RootState) => state.connection);
   const settings = useSelector((state: RootState) => state.settings);
+  const encoder = useSelector((state: RootState) => state.capture.encoder);
   const dispatch = useDispatch();
 
   function handleDiscordTokenChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -232,28 +244,84 @@ export function Settings({ open, onClose }: SettingsProps) {
   }
 
   useEffect(() => {
+    // The encoding is reported once as the stream starts so the listener has to be in place first
+    window.kenku.on("AUDIO_CAPTURE_ENCODER", (args) => {
+      const captureEncoder: CaptureEncoder = args[0];
+      dispatch(setEncoder(captureEncoder));
+    });
     window.kenku.startAudioCapture(settings.streamingMode);
+    window.kenku.setNormalize(settings.normalizeOutput);
+
+    return () => {
+      window.kenku.removeAllListeners("AUDIO_CAPTURE_ENCODER");
+    };
   }, []);
 
   const streamingSettings = (
-    <FormControl fullWidth variant="standard" margin="dense">
-      <InputLabel id="streaming-mode-select-label">Mode</InputLabel>
-      <Select
-        labelId="streaming-mode-select-label"
-        label="Mode"
-        value={settings.streamingMode}
-        onChange={handleStreamingModeChnage}
-      >
-        <MenuItem value="lowLatency">Low Latency</MenuItem>
-        <MenuItem value="performance">Performance</MenuItem>
-      </Select>
-      {streamingModeChanged && (
-        <FormHelperText sx={{ color: "primary.main" }}>
-          * Restart to apply change
+    <Stack spacing={1}>
+      <FormControl fullWidth variant="standard" margin="dense">
+        <InputLabel id="streaming-mode-select-label">Mode</InputLabel>
+        <Select
+          labelId="streaming-mode-select-label"
+          label="Mode"
+          value={settings.streamingMode}
+          onChange={handleStreamingModeChnage}
+        >
+          <MenuItem value="lowLatency">Low Latency</MenuItem>
+          <MenuItem value="balanced">Balanced</MenuItem>
+          <MenuItem value="performance">Performance</MenuItem>
+        </Select>
+        <FormHelperText>
+          {streamingModeDescriptions[settings.streamingMode]}
         </FormHelperText>
-      )}
-    </FormControl>
+        {streamingModeChanged && (
+          <FormHelperText sx={{ color: "primary.main" }}>
+            * Restart to apply change
+          </FormHelperText>
+        )}
+      </FormControl>
+      <FormGroup>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings.normalizeOutput}
+              onChange={handleNormalizeOutputToggle}
+            />
+          }
+          sx={{ marginLeft: "-8px" }}
+          label={
+            <Typography variant="caption">Normalize Output Volume</Typography>
+          }
+        />
+        <FormHelperText sx={{ marginTop: "-4px" }}>
+          Evens out the loudness of files, tabs and soundboards so listeners
+          aren&apos;t reaching for their volume between sources. Quiet material
+          is raised slowly, so deliberately soft passages will come up too.
+        </FormHelperText>
+      </FormGroup>
+      {encoder &&
+        (encoder.encoding === "opus-js" ? (
+          <Alert severity="warning" sx={{ py: 0 }}>
+            <Typography variant="caption">
+              Encoding Opus in JavaScript ({encoder.detail}). Expect high CPU
+              use and reduced quality.
+            </Typography>
+          </Alert>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            Encoder: {encodingLabels[encoder.encoding]}
+          </Typography>
+        ))}
+    </Stack>
   );
+
+  function handleNormalizeOutputToggle() {
+    const enabled = !settings.normalizeOutput;
+    dispatch(setNormalizeOutput(enabled));
+    // Applied live rather than on restart, the normaliser just stops moving
+    // the gain and slides back to unity
+    window.kenku.setNormalize(enabled);
+  }
 
   function handleShowControlsToggle() {
     dispatch(setURLBarEnabled(!settings.urlBarEnabled));

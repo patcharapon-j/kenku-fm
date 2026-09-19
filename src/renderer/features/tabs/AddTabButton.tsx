@@ -6,6 +6,7 @@ import AddIcon from "@mui/icons-material/AddRounded";
 import { useDispatch } from "react-redux";
 import { addTab, selectTab } from "../tabs/tabsSlice";
 import { getBounds } from "../tabs/getBounds";
+import { UNITY_GAIN } from "../../common/audioCapture";
 
 export function AddTabButton() {
   const dispatch = useDispatch();
@@ -27,6 +28,7 @@ export function AddTabButton() {
         icon: "",
         playingMedia: 0,
         muted: false,
+        gain: UNITY_GAIN,
       })
     );
     dispatch(selectTab(id));

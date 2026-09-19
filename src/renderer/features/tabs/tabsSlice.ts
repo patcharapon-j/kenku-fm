@@ -8,6 +8,8 @@ export interface Tab {
   /** The number of media tracks playing on this tab */
   playingMedia: number;
   muted: boolean;
+  /** Level of this tab in the capture mix, 1 is unity */
+  gain: number;
 }
 
 export interface TabsState {

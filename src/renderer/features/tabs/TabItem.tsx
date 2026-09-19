@@ -1,6 +1,7 @@
 import BookmarkIcon from "@mui/icons-material/Bookmark";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import CloseIcon from "@mui/icons-material/CloseRounded";
+import TuneIcon from "@mui/icons-material/TuneRounded";
 import VolumeOffIcon from "@mui/icons-material/VolumeOffRounded";
 import VolumeIcon from "@mui/icons-material/VolumeUpRounded";
 import Box from "@mui/material/Box";
@@ -8,14 +9,16 @@ import IconButton from "@mui/material/IconButton";
 import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
-import React from "react";
+import React, { useState } from "react";
 
 import { v4 as uuid } from "uuid";
 
 import { useDispatch, useSelector } from "react-redux";
 import { type RootState } from "../../app/store";
 import { addBookmark, removeBookmark } from "../bookmarks/bookmarksSlice";
-import { setMuted } from "../player/playerSlice";
+import { setGain, setMuted } from "../player/playerSlice";
+import { UNITY_GAIN } from "../../common/audioCapture";
+import { GainMenu } from "../../common/GainMenu";
 import { safeURL } from "./Tabs";
 import { Tab, editTab, removeTab, selectTab } from "./tabsSlice";
 
@@ -38,16 +41,45 @@ export function TabItem({ tab, selected, allowClose, shadow }: TabType) {
     return bookmark.url === tab.url;
   });
 
+  const [gainAnchor, setGainAnchor] = useState<HTMLButtonElement | null>(null);
+
+  function handleGainChange(gain: number) {
+    window.kenku.setViewGain(tab.id, gain);
+    if (tab.id === playerTabId) {
+      dispatch(setGain(gain));
+    } else {
+      dispatch(editTab({ id: tab.id, gain }));
+    }
+  }
+
   const showMedia = tab.playingMedia > 0;
+  // A level is only worth reaching for once the tab is contributing to the mix
+  const showLevel = showMedia;
   const showBookmark = Boolean(safeURL(tab.url) && selected && allowClose);
   const showClose = Boolean(allowClose);
   const shownIcons =
-    Number(showBookmark) + Number(showClose) + Number(showMedia);
+    Number(showBookmark) +
+    Number(showClose) +
+    Number(showMedia) +
+    Number(showLevel);
 
   return (
     <ListItem
       secondaryAction={
         <>
+          {showLevel && (
+            <IconButton
+              edge="end"
+              aria-label="level"
+              size="small"
+              onClick={(event) => setGainAnchor(event.currentTarget)}
+            >
+              <TuneIcon
+                sx={{ fontSize: "1rem" }}
+                color={tab.gain === UNITY_GAIN ? undefined : "primary"}
+              />
+            </IconButton>
+          )}
           {showMedia && (
             <IconButton
               edge="end"
@@ -174,6 +206,13 @@ export function TabItem({ tab, selected, allowClose, shadow }: TabType) {
           }}
         />
       </ListItemButton>
+      <GainMenu
+        anchorEl={gainAnchor}
+        open={Boolean(gainAnchor)}
+        gain={tab.gain}
+        onGainChange={handleGainChange}
+        onClose={() => setGainAnchor(null)}
+      />
     </ListItem>
   );
 }

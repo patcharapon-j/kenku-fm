@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
@@ -25,10 +25,16 @@ const WallPaper = styled("div")({
   zIndex: -1,
 });
 
+/** A capture warning repeats every time the stream restarts, so hold each one back for a while */
+const WARNING_REPEAT_TIMEOUT = 60000;
+
 export function App() {
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+  const [warning, setWarning] = useState<string>();
   const [fatalError, setFatalError] = useState<string>();
+
+  const warningTimes = useRef<Record<string, number>>({});
 
   useEffect(() => {
     window.kenku.on("MESSAGE", (args) => {
@@ -43,11 +49,22 @@ export function App() {
       const error = args[0];
       setFatalError(error);
     });
+    window.kenku.on("AUDIO_CAPTURE_WARNING", (args) => {
+      const warning = args[0];
+      const time = Date.now();
+      const shown = warningTimes.current[warning];
+      if (shown !== undefined && time - shown < WARNING_REPEAT_TIMEOUT) {
+        return;
+      }
+      warningTimes.current[warning] = time;
+      setWarning(warning);
+    });
 
     return () => {
       window.kenku.removeAllListeners("MESSAGE");
       window.kenku.removeAllListeners("ERROR");
       window.kenku.removeAllListeners("FATAL_ERROR");
+      window.kenku.removeAllListeners("AUDIO_CAPTURE_WARNING");
     };
   }, []);
 
@@ -98,6 +115,14 @@ export function App() {
         sx={{ maxWidth: "192px" }}
       >
         <Alert severity="error">{error}</Alert>
+      </Snackbar>
+      <Snackbar
+        open={Boolean(warning)}
+        autoHideDuration={8000}
+        onClose={() => setWarning(undefined)}
+        sx={{ maxWidth: "192px" }}
+      >
+        <Alert severity="warning">{warning}</Alert>
       </Snackbar>
     </Stack>
   );

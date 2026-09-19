@@ -1,7 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export type ConnectionStatus = "disconnected" | "connecting" | "ready";
-export type StreamingMode = "lowLatency" | "performance";
+export type StreamingMode = "lowLatency" | "balanced" | "performance";
 
 export interface SettingsState {
   discordToken: string;
@@ -13,6 +13,7 @@ export interface SettingsState {
   multipleInputsEnabled: boolean;
   multipleOutputsEnabled: boolean;
   streamingMode: StreamingMode;
+  normalizeOutput: boolean;
 }
 
 const initialState: SettingsState = {
@@ -24,7 +25,8 @@ const initialState: SettingsState = {
   externalInputsEnabled: false,
   multipleInputsEnabled: false,
   multipleOutputsEnabled: false,
-  streamingMode: "performance",
+  streamingMode: "balanced",
+  normalizeOutput: false,
 };
 
 export const connectionSlice = createSlice({
@@ -58,6 +60,9 @@ export const connectionSlice = createSlice({
     setStreamingMode: (state, action: PayloadAction<StreamingMode>) => {
       state.streamingMode = action.payload;
     },
+    setNormalizeOutput: (state, action: PayloadAction<boolean>) => {
+      state.normalizeOutput = action.payload;
+    },
   },
 });
 
@@ -71,6 +76,7 @@ export const {
   setMultipleInputsEnabled,
   setMultipleOutputsEnabled,
   setStreamingMode,
+  setNormalizeOutput,
 } = connectionSlice.actions;
 
 export default connectionSlice.reducer;

@@ -14,9 +14,16 @@ import ExpandMore from "@mui/icons-material/ExpandMoreRounded";
 
 import { RootState } from "../../app/store";
 import { useSelector, useDispatch } from "react-redux";
-import { addOutput, removeOutput, setGuilds, setOutput } from "./outputSlice";
+import {
+  addOutput,
+  removeOutput,
+  setGuilds,
+  setMonitorDevices,
+  setOutput,
+} from "./outputSlice";
 
 import { OutputListItem } from "./OutputListItem";
+import { MonitorSettings } from "./MonitorSettings";
 
 export function OutputListItems() {
   const [open, setOpen] = useState(true);
@@ -28,6 +35,21 @@ export function OutputListItems() {
   const output = useSelector((state: RootState) => state.output);
   const settings = useSelector((state: RootState) => state.settings);
   const dispatch = useDispatch();
+
+  const [monitorOpen, setMonitorOpen] = useState(false);
+
+  useEffect(() => {
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+      const audioDevices = devices
+        .filter((d) => d.kind === "audiooutput")
+        .map((device) => ({ id: device.deviceId, label: device.label }));
+      dispatch(setMonitorDevices(audioDevices));
+    });
+
+    // The capture graph starts at its own defaults so the stored monitor setup has to be sent
+    window.kenku.setMonitorGain(output.monitorGain);
+    window.kenku.setMonitorDevice(output.monitorDeviceId);
+  }, []);
 
   useEffect(() => {
     window.kenku.on("DISCORD_GUILDS", (args) => {
@@ -135,6 +157,7 @@ export function OutputListItems() {
               output.outputs.includes("local")
             }
             onClick={handleChannelChange}
+            onSettingsClick={() => setMonitorOpen(true)}
           />
           <Divider variant="middle" />
           {output.guilds.map((guild) => (
@@ -182,6 +205,10 @@ export function OutputListItems() {
           ))}
         </List>
       </Collapse>
+      <MonitorSettings
+        open={monitorOpen}
+        onClose={() => setMonitorOpen(false)}
+      />
     </>
   );
 }
