@@ -1,3 +1,4 @@
+import { useLibraryFilter } from "../library/LibraryControls";
 import React, { useRef, useState } from "react";
 
 import Box from "@mui/material/Box";
@@ -41,6 +42,7 @@ export function PlaylistTracks({
   onPlay,
 }: PlaylistTracksProps) {
   const dispatch = useDispatch();
+  const { visible, controls, active } = useLibraryFilter(items);
 
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: 10 },
@@ -59,7 +61,7 @@ export function PlaylistTracks({
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
 
-    if (active.id !== over.id) {
+    if (over && active.id !== over.id) {
       dispatch(
         moveTrack({
           playlistId: playlist.id,
@@ -108,15 +110,19 @@ export function PlaylistTracks({
           marginBottom: "240px",
         }}
       >
+        {controls}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <SortableContext items={items} strategy={verticalListSortingStrategy}>
-            {items.map((item) => (
-              <SortableItem key={item.id} id={item.id}>
+          <SortableContext
+            items={visible}
+            strategy={verticalListSortingStrategy}
+          >
+            {visible.map((item) => (
+              <SortableItem key={item.id} id={item.id} disabled={active}>
                 <TrackItem track={item} playlist={playlist} onPlay={onPlay} />
               </SortableItem>
             ))}

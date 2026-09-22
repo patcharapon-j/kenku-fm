@@ -1,3 +1,4 @@
+import { TagsField } from "../library/LibraryControls";
 import React from "react";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
@@ -64,6 +65,10 @@ export function TrackSettings({ track, open, onClose }: TrackSettingsProps) {
             }}
             value={track.title}
             onChange={handleTitleChange}
+          />
+          <TagsField
+            tags={track.tags}
+            onChange={(tags) => dispatch(editTrack({ id: track.id, tags }))}
           />
         </DialogContent>
         <DialogActions>

@@ -4,10 +4,11 @@ import { CSS } from "@dnd-kit/utilities";
 
 type SortableItemProps = {
   id: string;
+  disabled?: boolean;
   children: React.ReactNode;
 };
 
-export function SortableItem({ id, children }: SortableItemProps) {
+export function SortableItem({ id, children, disabled }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -15,7 +16,7 @@ export function SortableItem({ id, children }: SortableItemProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),

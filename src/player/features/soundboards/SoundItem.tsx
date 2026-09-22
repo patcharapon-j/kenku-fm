@@ -162,6 +162,7 @@ export function SoundItem({ id, soundboard, onPlay, onStop }: SoundItemProps) {
                 <MoreVert />
               </IconButton>
             </Stack>
+            <Typography variant="caption">{sound.tags?.join(" • ")}</Typography>
             <Stack
               direction="row"
               spacing={2}

@@ -133,6 +133,8 @@ export class AudioCaptureManagerPreload {
   _audioContext?: AudioContext;
   /** Audio output node that streams will connect to */
   _audioOutputNode?: AudioNode;
+  /** Imported audio bypasses dynamic leveling but retains mix peak protection. */
+  _playerOutputNode?: GainNode;
   /**
    * Master bus processor. Limits the mix, passes the limited signal on for
    * local monitoring and posts it here in blocks to be encoded
@@ -219,6 +221,7 @@ export class AudioCaptureManagerPreload {
       sampleRate: SAMPLE_RATE,
     });
     this._audioOutputNode = this._audioContext.createGain();
+    this._playerOutputNode = this._audioContext.createGain();
 
     // A context that didn't get the rate it asked for resamples everything on
     // the way out, which is worth knowing about rather than silently wearing
@@ -259,7 +262,7 @@ export class AudioCaptureManagerPreload {
       this._audioContext,
       "pcm-stream",
       {
-        numberOfInputs: 1,
+        numberOfInputs: 2,
         numberOfOutputs: 1,
         outputChannelCount: [NUM_CHANNELS],
         processorOptions: {
@@ -286,7 +289,8 @@ export class AudioCaptureManagerPreload {
 
     // Connected last so that no audio is produced before everything that
     // consumes it is in place
-    this._audioOutputNode.connect(this._pcmStreamNode);
+    this._audioOutputNode.connect(this._pcmStreamNode, 0, 0);
+    this._playerOutputNode.connect(this._pcmStreamNode, 0, 1);
   }
 
   /**
@@ -865,7 +869,8 @@ export class AudioCaptureManagerPreload {
    */
   async startBrowserViewStream(
     viewId: number,
-    mediaSourceId: string
+    mediaSourceId: string,
+    isPlayer = false
   ): Promise<void> {
     try {
       const streamConfig = {
@@ -898,7 +903,7 @@ export class AudioCaptureManagerPreload {
       const audioSource = this._audioContext.createMediaStreamSource(stream);
       audioSource.connect(output);
 
-      output.connect(this._audioOutputNode);
+      output.connect(isPlayer ? this._playerOutputNode : this._audioOutputNode);
     } catch (error) {
       console.error(`Unable to start stream for web view ${viewId}`);
       console.error(error);

@@ -1,3 +1,4 @@
+import { normalizedSource } from "../../common/mediaURL";
 import { useCallback, useEffect, useRef } from "react";
 
 import { useDispatch, useSelector, useStore } from "react-redux";
@@ -23,7 +24,7 @@ const PREVIOUS_THRESHOLD = 5;
 /** Length of the ramp used when an audible track has to be removed */
 const DECLICK_FADE = 50;
 /** Length of the fade to and from silence used by play, pause and stop */
-const TRANSPORT_FADE = 400;
+const TRANSPORT_FADE = 1500;
 
 /** A track to move to in the queue or the reason there isn't one */
 type QueueMove =
@@ -40,7 +41,11 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
   /** Track that is fading out during a cross fade */
   const outgoingRef = useRef<WebAudioTrack | null>(null);
   /** Next track loaded ahead of a cross fade */
-  const preloadRef = useRef<{ id: string; track: WebAudioTrack } | null>(null);
+  const preloadRef = useRef<{
+    id: string;
+    source: string;
+    track: WebAudioTrack;
+  } | null>(null);
   /**
    * Cross fade gain of each live instance.
    * The master volume is multiplied by these before it reaches a track so that
@@ -238,7 +243,15 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
         onComplete?.();
         return;
       }
-      const duration = TRANSPORT_FADE * distance;
+      const duration =
+        (store.getState().playlistPlayback.transportFade ?? TRANSPORT_FADE) *
+        distance;
+      if (duration === 0) {
+        transportFadeRef.current = target;
+        applyVolume();
+        onComplete?.();
+        return;
+      }
       // Raised cosine so the ramp leaves and arrives at rest. A linear ramp
       // hinges at both ends, which is audible as a chirp on a sustained note
       const shape = (progress: number) =>
@@ -500,13 +513,16 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
     if (move.type !== "track") {
       return;
     }
-    if (preloadRef.current?.id === move.track.id) {
+    if (
+      preloadRef.current?.id === move.track.id &&
+      preloadRef.current.source === normalizedSource(move.track)
+    ) {
       return;
     }
     removePreload();
     try {
       const track = new WebAudioTrack({
-        src: move.track.url,
+        src: normalizedSource(move.track),
         mute: store.getState().playlistPlayback.muted,
         volume: 0,
       });
@@ -519,7 +535,11 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
         }
         track.unload();
       });
-      preloadRef.current = { id: move.track.id, track };
+      preloadRef.current = {
+        id: move.track.id,
+        source: normalizedSource(move.track),
+        track,
+      };
     } catch {
       // A track that fails to preload is loaded again when it starts playing
       preloadRef.current = null;
@@ -537,7 +557,11 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
       // Only an instance that finished loading is safe to reuse: one that is
       // still loading, or that failed to load, would leave `play` waiting on a
       // load that may never arrive
-      if (preload.id !== track.id || preload.track.state() !== "loaded") {
+      if (
+        preload.id !== track.id ||
+        preload.source !== normalizedSource(track) ||
+        preload.track.state() !== "loaded"
+      ) {
         preload.track.unload();
         return null;
       }
@@ -583,7 +607,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
         const playback =
           takePreloadedTrack(track) ||
           new WebAudioTrack({
-            src: track.url,
+            src: normalizedSource(track),
             mute: store.getState().playlistPlayback.muted,
             volume: 0,
           });

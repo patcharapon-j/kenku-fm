@@ -1,3 +1,4 @@
+import { TagsField } from "../library/LibraryControls";
 import React, { useEffect, useState } from "react";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
@@ -26,6 +27,7 @@ type SoundAddProps = {
 export function SoundAdd({ soundboardId, open, onClose }: SoundAddProps) {
   const dispatch = useDispatch();
 
+  const [tags, setTags] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [url, setURL] = useState("");
   const [fadeIn, setFadeIn] = useState(100);
@@ -34,6 +36,7 @@ export function SoundAdd({ soundboardId, open, onClose }: SoundAddProps) {
   useEffect(() => {
     if (!open) {
       setTitle("");
+      setTags([]);
       setURL("");
     }
   }, [open]);
@@ -57,9 +60,18 @@ export function SoundAdd({ soundboardId, open, onClose }: SoundAddProps) {
     const id = uuid();
     dispatch(
       addSound({
-        sound: { id, title, url, loop: false, volume: 1, fadeIn, fadeOut },
+        sound: {
+          id,
+          title,
+          url,
+          tags,
+          loop: false,
+          volume: 1,
+          fadeIn,
+          fadeOut,
+        },
         soundboardId: soundboardId,
-      })
+      }),
     );
     onClose();
   }
@@ -127,6 +139,7 @@ export function SoundAdd({ soundboardId, open, onClose }: SoundAddProps) {
               />
             </FormControl>
           </Box>
+          <TagsField tags={tags} onChange={setTags} />
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>Cancel</Button>

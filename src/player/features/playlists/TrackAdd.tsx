@@ -1,3 +1,4 @@
+import { TagsField } from "../library/LibraryControls";
 import React, { useEffect, useState } from "react";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
@@ -22,12 +23,14 @@ type TrackAddProps = {
 export function TrackAdd({ playlistId, open, onClose }: TrackAddProps) {
   const dispatch = useDispatch();
 
+  const [tags, setTags] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [url, setURL] = useState("");
 
   useEffect(() => {
     if (!open) {
       setTitle("");
+      setTags([]);
       setURL("");
     }
   }, [open]);
@@ -39,7 +42,7 @@ export function TrackAdd({ playlistId, open, onClose }: TrackAddProps) {
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const id = uuid();
-    dispatch(addTrack({ track: { id, title, url }, playlistId }));
+    dispatch(addTrack({ track: { id, title, url, tags }, playlistId }));
     dispatch(addTrackToQueueIfNeeded({ playlistId, trackId: id }));
     onClose();
   }
@@ -63,6 +66,7 @@ export function TrackAdd({ playlistId, open, onClose }: TrackAddProps) {
             value={title}
             onChange={handleTitleChange}
           />
+          <TagsField tags={tags} onChange={setTags} />
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>Cancel</Button>

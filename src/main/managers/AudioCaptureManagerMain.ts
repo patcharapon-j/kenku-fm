@@ -1,3 +1,4 @@
+declare const PLAYER_WINDOW_WEBPACK_ENTRY: string;
 import {
   BrowserWindow,
   ipcMain,
@@ -908,7 +909,8 @@ export class AudioCaptureManagerMain extends TypedEmitter<AudioCaptureManagerEve
     this._browserWindow.webContents.send(
       "AUDIO_CAPTURE_START_BROWSER_VIEW_STREAM",
       viewId,
-      mediaSourceId
+      mediaSourceId,
+      contents.getURL().split("#")[0] === PLAYER_WINDOW_WEBPACK_ENTRY.split("#")[0]
     );
   };
 

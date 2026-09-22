@@ -98,6 +98,7 @@ export function TrackItem({ track, playlist, onPlay }: TrackItemProps) {
         >
           <ListItemText
             primary={track.title}
+            secondary={track.tags?.join(" • ")}
             sx={{
               ".MuiListItemText-primary": {
                 whiteSpace: "nowrap",

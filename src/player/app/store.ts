@@ -20,7 +20,7 @@ const playbackPersistConfig = {
   key: "playback",
   version: 1,
   storage,
-  whitelist: ["volume", "muted", "shuffle", "repeat", "crossfade"],
+  whitelist: ["volume", "muted", "shuffle", "repeat", "crossfade", "transportFade"],
 };
 
 const rootReducer = combineReducers({
