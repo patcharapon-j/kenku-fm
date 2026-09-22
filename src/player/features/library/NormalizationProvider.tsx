@@ -27,6 +27,8 @@ type Item = {
   normalization?: { source: string; version: number };
   kind: "track" | "sound";
 };
+/** A file waiting for a free slot in the pool */
+type Job = { key: string; item: Item; bulk: boolean; generation: number };
 const Context = createContext<React.ReactNode>(null);
 export const useNormalizationControls = () => useContext(Context);
 const needsProcessing = (item: Item) =>
@@ -55,13 +57,77 @@ export function NormalizationProvider({
   const unprocessed = items.filter(needsProcessing);
   const previous = useRef<Map<string, string>>();
   const jobs = useRef(new Set<string>());
-  const queue = useRef<Promise<void>>(Promise.resolve());
+  const waiting = useRef<Job[]>([]);
+  const running = useRef(0);
+  // The main process decides how many files it will work on at once. Until it
+  // answers, stay with one so a drop never starts more than it can run.
+  const concurrency = useRef(1);
   const [pending, setPending] = useState(0);
-  const [current, setCurrent] = useState("");
+  const [current, setCurrent] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<string[]>([]);
   const [offer, setOffer] = useState(false);
   const [cancelled, setCancelled] = useState(false);
   const batchGeneration = useRef(0);
+
+  useEffect(() => {
+    let stale = false;
+    window.player
+      .normalizationConcurrency()
+      .then((count) => {
+        if (stale) return;
+        concurrency.current = Math.max(1, Math.floor(count) || 1);
+        // A drop may already be queued behind the old limit of one
+        pump();
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, []);
+
+  async function process(job: Job) {
+    const { item } = job;
+    try {
+      if (job.bulk && job.generation !== batchGeneration.current) return;
+      const before =
+        item.kind === "track"
+          ? store.getState().playlists.tracks[item.id]
+          : store.getState().soundboards.sounds[item.id];
+      if (!before || before.url !== item.url) return;
+      setCurrent((titles) => ({ ...titles, [job.key]: item.title }));
+      const normalization = await window.player.normalizeAudio(item.url);
+      const latest =
+        item.kind === "track"
+          ? store.getState().playlists.tracks[item.id]
+          : store.getState().soundboards.sounds[item.id];
+      if (!latest || latest.url !== item.url) return;
+      store.dispatch(
+        item.kind === "track"
+          ? editTrack({ id: item.id, normalization })
+          : editSound({ id: item.id, normalization }),
+      );
+    } catch (error) {
+      setErrors((messages) => [
+        ...messages,
+        `${item.title}: ${error instanceof Error ? error.message : "Processing failed"}`,
+      ]);
+    }
+  }
+
+  /** Start as many queued files as the pool allows */
+  function pump() {
+    while (running.current < concurrency.current && waiting.current.length) {
+      const job = waiting.current.shift();
+      running.current++;
+      void process(job).finally(() => {
+        running.current--;
+        jobs.current.delete(job.key);
+        setPending((count) => count - 1);
+        setCurrent(({ [job.key]: _done, ...rest }) => rest);
+        pump();
+      });
+    }
+  }
 
   function enqueue(list: Item[], bulk = false) {
     const generation = batchGeneration.current;
@@ -71,38 +137,22 @@ export function NormalizationProvider({
       if (jobs.current.has(key)) continue;
       jobs.current.add(key);
       setPending((count) => count + 1);
-      queue.current = queue.current.then(async () => {
-        try {
-          if (bulk && generation !== batchGeneration.current) return;
-          const before =
-            item.kind === "track"
-              ? store.getState().playlists.tracks[item.id]
-              : store.getState().soundboards.sounds[item.id];
-          if (!before || before.url !== item.url) return;
-          setCurrent(item.title);
-          const normalization = await window.player.normalizeAudio(item.url);
-          const latest =
-            item.kind === "track"
-              ? store.getState().playlists.tracks[item.id]
-              : store.getState().soundboards.sounds[item.id];
-          if (!latest || latest.url !== item.url) return;
-          store.dispatch(
-            item.kind === "track"
-              ? editTrack({ id: item.id, normalization })
-              : editSound({ id: item.id, normalization }),
-          );
-        } catch (error) {
-          setErrors((messages) => [
-            ...messages,
-            `${item.title}: ${error instanceof Error ? error.message : "Processing failed"}`,
-          ]);
-        } finally {
-          jobs.current.delete(key);
-          setPending((count) => count - 1);
-          setCurrent("");
-        }
-      });
+      waiting.current.push({ key, item, bulk, generation });
     }
+    pump();
+  }
+
+  /** Drop the queued bulk files. Ones already running are left to finish. */
+  function cancelBulk() {
+    batchGeneration.current++;
+    const remaining = waiting.current.filter((job) => !job.bulk);
+    const dropped = waiting.current.length - remaining.length;
+    for (const job of waiting.current) {
+      if (job.bulk) jobs.current.delete(job.key);
+    }
+    waiting.current = remaining;
+    if (dropped) setPending((count) => count - dropped);
+    setCancelled(true);
   }
 
   useEffect(() => {
@@ -122,28 +172,29 @@ export function NormalizationProvider({
     previous.current = next;
   }, [tracks, sounds]);
 
+  const active = Object.values(current);
+  const activeLabel =
+    active.length === 0
+      ? "audio"
+      : active.length === 1
+        ? active[0]
+        : `${active[0]} and ${active.length - 1} more`;
+
   const controls = (
     <Stack spacing={1}>
       <Typography variant="subtitle1">Audio leveling</Typography>
       <Typography variant="body2">
-        New local files are processed automatically. Originals stay unchanged.
-        Playback copies use a fixed level for the whole track, preserving its
-        dynamics.
+        New local files are processed automatically, several at a time.
+        Originals stay unchanged. Playback copies use a fixed level for the
+        whole track, preserving its dynamics.
       </Typography>
       {pending > 0 ? (
         <>
           <LinearProgress />
           <Typography variant="body2">
-            Processing {current || "audio"} • {pending} remaining
+            Processing {activeLabel} • {pending} remaining
           </Typography>
-          <Button
-            onClick={() => {
-              batchGeneration.current++;
-              setCancelled(true);
-            }}
-          >
-            Cancel remaining bulk processing
-          </Button>
+          <Button onClick={cancelBulk}>Cancel remaining bulk processing</Button>
         </>
       ) : (
         <Button
@@ -158,8 +209,8 @@ export function NormalizationProvider({
       )}
       {cancelled && (
         <Typography variant="caption">
-          Bulk processing will stop after the current file. New imports still
-          process automatically.
+          Bulk processing will stop after the files already in progress. New
+          imports still process automatically.
         </Typography>
       )}
       {errors.length > 0 && (

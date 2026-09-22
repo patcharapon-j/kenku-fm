@@ -2,6 +2,7 @@ import { app } from "electron";
 import { spawn } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import ffmpegPath from "ffmpeg-static";
 
@@ -13,7 +14,39 @@ export interface Normalization {
 }
 const VERSION = 1;
 const inFlight = new Map<string, Promise<Normalization>>();
-let queue: Promise<unknown> = Promise.resolve();
+
+/**
+ * How many files are measured and encoded at once.
+ *
+ * ffmpeg is close to single threaded for this work, so importing a folder or
+ * levelling a whole library is bound by how many processes run side by side.
+ * Half the cores keeps the rest for playback and the interface, and the cap
+ * stops a large machine from spawning more processes than the disk can feed.
+ */
+function defaultConcurrency(): number {
+  const cores = os.cpus()?.length || 2;
+  return Math.max(1, Math.min(4, Math.floor(cores / 2)));
+}
+
+export const normalizationConcurrency = defaultConcurrency();
+
+let active = 0;
+const waiting: (() => void)[] = [];
+
+function acquire(): Promise<void> {
+  if (active < normalizationConcurrency) {
+    active++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => waiting.push(resolve));
+}
+
+function release() {
+  // Hand the slot straight to the next job so the count stays accurate
+  const next = waiting.shift();
+  if (next) next();
+  else active--;
+}
 
 function run(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,9 +86,9 @@ export function normalizeAudio(source: string): Promise<Normalization> {
     return Promise.reject(new Error("Only local audio files can be processed"));
   const existing = inFlight.get(source);
   if (existing) return existing;
-  const job = queue
-    .catch(() => {})
-    .then(async () => {
+  const job = (async () => {
+    await acquire();
+    try {
       // Stored URLs use encodeFilePath, including Windows drive letters.
       const input = decodeURIComponent(source.slice(7));
       const stat = await fs.promises.stat(input);
@@ -95,7 +128,11 @@ export function normalizeAudio(source: string): Promise<Normalization> {
         Number(measured.input_i),
         Number(measured.input_tp),
       );
-      const temporary = `${output}.tmp.flac`;
+      // Unique per job. The same file can be queued under two URL spellings,
+      // which the in flight map won't match but the cache key will, and in
+      // parallel a shared temporary would let one encode overwrite the other.
+      const suffix = crypto.randomBytes(6).toString("hex");
+      const temporary = `${output}.${suffix}.tmp.flac`;
       try {
         await run([
           "-y",
@@ -124,8 +161,10 @@ export function normalizeAudio(source: string): Promise<Normalization> {
       } finally {
         await fs.promises.unlink(temporary).catch(() => {});
       }
-    });
-  queue = job;
+    } finally {
+      release();
+    }
+  })();
   inFlight.set(source, job);
   void job.finally(() => inFlight.delete(source)).catch(() => {});
   return job;
