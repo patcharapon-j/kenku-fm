@@ -1,3 +1,4 @@
+import TextField from "@mui/material/TextField";
 import React from "react";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
@@ -12,7 +13,10 @@ import FormHelperText from "@mui/material/FormHelperText";
 
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../app/store";
-import { adjustCrossfade } from "../playlists/playlistPlaybackSlice";
+import {
+  adjustCrossfade,
+  adjustTransportFade,
+} from "../playlists/playlistPlaybackSlice";
 
 type PlaybackSettingsProps = {
   open: boolean;
@@ -21,6 +25,9 @@ type PlaybackSettingsProps = {
 
 export function PlaybackSettings({ open, onClose }: PlaybackSettingsProps) {
   const dispatch = useDispatch();
+  const transportFade = useSelector(
+    (state: RootState) => state.playlistPlayback.transportFade ?? 1500,
+  );
   const crossfade = useSelector(
     (state: RootState) => state.playlistPlayback.crossfade,
   );
@@ -64,6 +71,17 @@ export function PlaybackSettings({ open, onClose }: PlaybackSettingsProps) {
               />
             </FormControl>
           </Box>
+          <TextField
+            label="Play / pause fade (ms)"
+            type="number"
+            value={transportFade}
+            inputProps={{ min: 0, max: 10000, step: 100 }}
+            helperText="Separate from track transitions. 0 disables the fade."
+            onChange={(e) =>
+              dispatch(adjustTransportFade(Number(e.target.value) || 0))
+            }
+            fullWidth
+          />
         </DialogContent>
         <DialogActions>
           <Button type="submit">Done</Button>

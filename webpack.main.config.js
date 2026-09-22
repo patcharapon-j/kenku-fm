@@ -12,6 +12,7 @@ module.exports = {
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css", ".json"],
   },
   externals: {
+    "ffmpeg-static": "commonjs2 ffmpeg-static",
     opusscript: "commonjs2 opusscript",
     "@discordjs/opus": "commonjs2 @discordjs/opus",
     "prism-media": "commonjs2 prism-media",

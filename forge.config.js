@@ -93,6 +93,7 @@ const config = {
       name: "@timfish/forge-externals-plugin",
       config: {
         externals: [
+          "ffmpeg-static",
           "opusscript",
           // prism-media only declares this as an optional peer dependency so
           // the dependency walk never reaches it, and without it here the

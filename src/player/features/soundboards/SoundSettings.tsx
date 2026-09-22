@@ -1,3 +1,4 @@
+import { TagsField } from "../library/LibraryControls";
 import React from "react";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
@@ -124,6 +125,10 @@ export function SoundSettings({ sound, open, onClose }: SoundSettingsProps) {
               />
             </FormControl>
           </Box>
+          <TagsField
+            tags={sound.tags}
+            onChange={(tags) => dispatch(editSound({ id: sound.id, tags }))}
+          />
         </DialogContent>
         <DialogActions>
           <Button type="submit">Done</Button>

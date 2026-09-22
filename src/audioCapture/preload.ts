@@ -9,8 +9,8 @@ const audioCaptureManager = new AudioCaptureManagerPreload();
 
 ipcRenderer.on(
   "AUDIO_CAPTURE_START_BROWSER_VIEW_STREAM",
-  (_, viewId: number, mediaSourceId: string) => {
-    audioCaptureManager.startBrowserViewStream(viewId, mediaSourceId);
+  (_, viewId: number, mediaSourceId: string, isPlayer: boolean) => {
+    audioCaptureManager.startBrowserViewStream(viewId, mediaSourceId, isPlayer);
   }
 );
 

@@ -4,6 +4,8 @@ export interface Sound {
   id: string;
   url: string;
   title: string;
+  tags?: string[];
+  normalization?: { url: string; source: string; gainDb: number; version: number };
   loop: boolean;
   volume: number;
   fadeIn: number;

@@ -290,13 +290,12 @@ export function Settings({ open, onClose }: SettingsProps) {
           }
           sx={{ marginLeft: "-8px" }}
           label={
-            <Typography variant="caption">Normalize Output Volume</Typography>
+            <Typography variant="caption">Level browser and input audio</Typography>
           }
         />
         <FormHelperText sx={{ marginTop: "-4px" }}>
-          Evens out the loudness of files, tabs and soundboards so listeners
-          aren&apos;t reaching for their volume between sources. Quiet material
-          is raised slowly, so deliberately soft passages will come up too.
+          Adjusts live browser tabs and external inputs as they play. Imported
+          playlist and soundboard files use fixed leveling from All audio.
         </FormHelperText>
       </FormGroup>
       {encoder &&

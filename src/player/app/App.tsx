@@ -1,3 +1,4 @@
+import { NormalizationProvider } from "../features/library/NormalizationProvider";
 import React, { useCallback, useState } from "react";
 
 import styled from "@mui/material/styles/styled";
@@ -44,7 +45,7 @@ export function App() {
   const soundboard = useSoundboardPlayback(handleError);
 
   return (
-    <>
+    <NormalizationProvider>
       <WallPaper />
       <Routes>
         <Route
@@ -105,6 +106,6 @@ export function App() {
       >
         <Alert severity="error">{errorMessage}</Alert>
       </Snackbar>
-    </>
+    </NormalizationProvider>
   );
 }

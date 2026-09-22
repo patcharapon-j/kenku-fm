@@ -1,3 +1,5 @@
+import { useLibraryFilter } from "../library/LibraryControls";
+import { RootState } from "../../app/store";
 import React, { useRef, useState } from "react";
 
 import Box from "@mui/material/Box";
@@ -23,7 +25,7 @@ import {
 import { SoundItem } from "./SoundItem";
 import { SortableItem } from "../../common/SortableItem";
 
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { Soundboard, Sound, moveSound } from "./soundboardsSlice";
 
 import { useHideScrollbar } from "../../../renderer/common/useHideScrollbar";
@@ -41,6 +43,10 @@ export function SoundboardSounds({
   onStop,
 }: SoundboardSoundsProps) {
   const dispatch = useDispatch();
+  const sounds = useSelector((state: RootState) => state.soundboards.sounds);
+  const { visible, controls, active } = useLibraryFilter(
+    soundboard.sounds.map((id) => sounds[id]),
+  );
 
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: 10 },
@@ -59,7 +65,7 @@ export function SoundboardSounds({
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
 
-    if (active.id !== over.id) {
+    if (over && active.id !== over.id) {
       dispatch(
         moveSound({
           soundboardId: soundboard.id,
@@ -92,6 +98,7 @@ export function SoundboardSounds({
       ref={scrollRef}
       {...hideScrollbar}
     >
+      {controls}
       <Grid
         sx={{
           width: "100%",
@@ -108,12 +115,12 @@ export function SoundboardSounds({
           onDragEnd={handleDragEnd}
         >
           <SortableContext
-            items={soundboard.sounds}
+            items={visible.map((sound) => sound.id)}
             strategy={rectSortingStrategy}
           >
-            {soundboard.sounds.map((id) => (
+            {visible.map(({ id }) => (
               <Grid item xs={12} sm={6} md={4} lg={3} xl={2} key={id}>
-                <SortableItem key={id} id={id}>
+                <SortableItem key={id} id={id} disabled={active}>
                   <SoundItem
                     id={id}
                     soundboard={soundboard}

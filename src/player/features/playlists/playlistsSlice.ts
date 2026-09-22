@@ -4,6 +4,8 @@ export interface Track {
   id: string;
   url: string;
   title: string;
+  tags?: string[];
+  normalization?: { url: string; source: string; gainDb: number; version: number };
 }
 
 export interface Playlist {

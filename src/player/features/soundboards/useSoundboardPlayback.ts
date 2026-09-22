@@ -1,3 +1,4 @@
+import { normalizedSource } from "../../common/mediaURL";
 import { useCallback, useEffect, useRef } from "react";
 
 import { useDispatch } from "react-redux";
@@ -21,7 +22,7 @@ export function useSoundboardPlayback(onError: (message: string) => void) {
       }
 
       const playback = new Sound({
-        src: sound.url,
+        src: normalizedSource(sound),
         volume: sound.volume,
         fadeIn: sound.fadeIn,
         fadeOut: sound.fadeOut,

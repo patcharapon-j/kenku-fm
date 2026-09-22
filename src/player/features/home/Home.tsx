@@ -1,3 +1,4 @@
+import { Library } from "../library/Library";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import {
@@ -71,6 +72,7 @@ export function Home({ onPlayTrack, onPlaySound }: HomeProps) {
         mb: "248px",
       }}
     >
+      <Library onPlayTrack={onPlayTrack} onPlaySound={onPlaySound} />
       <Card>
         <CardContent>
           <Stack

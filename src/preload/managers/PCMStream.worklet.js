@@ -231,8 +231,7 @@ class LoudnessNormalizer {
       this._targetGain = this.gain;
       return;
     }
-    const meanSquare =
-      (this._sumLeft + this._sumRight) / this._activeBlocks;
+    const meanSquare = (this._sumLeft + this._sumRight) / this._activeBlocks;
     if (meanSquare <= 0) {
       return;
     }
@@ -315,8 +314,9 @@ class Limiter {
     // can never be the minimum again, so it is dropped rather than tracked
     while (
       this._queueLength > 0 &&
-      this._gains[this._queue[(this._queueHead + this._queueLength - 1) % size]] >=
-        required
+      this._gains[
+        this._queue[(this._queueHead + this._queueLength - 1) % size]
+      ] >= required
     ) {
       this._queueLength--;
     }
@@ -390,13 +390,20 @@ class PCMStream extends AudioWorkletProcessor {
 
   process(inputs, outputs) {
     const input = inputs[0];
+    const player = inputs[1];
+    const playerLeft = player && player[0];
+    const playerRight = player && (player[1] || player[0]);
     const output = outputs[0];
     // A disconnected input has no channels at all, anything with at least one
     // is made stereo so that the stream we send stays stereo instead of
     // falling silent. Anything wider than stereo uses its first two channels
     const hasInput = input && input.length >= 1;
     const left = hasInput ? input[0] : undefined;
-    const right = hasInput ? (input.length > 1 ? input[1] : input[0]) : undefined;
+    const right = hasInput
+      ? input.length > 1
+        ? input[1]
+        : input[0]
+      : undefined;
     // The node is created asking for stereo out, so a quantum without both
     // channels means the graph is in a state this can't write into and the
     // block is left for the next one rather than throwing, which would stop
@@ -414,10 +421,15 @@ class PCMStream extends AudioWorkletProcessor {
       // instead of being heard as a moment of quiet
       const l = left ? left[i] : 0;
       const r = right ? right[i] : 0;
-      // The normaliser measures the mix as it arrives and the limiter catches
-      // whatever that leaves, so the ceiling holds however much gain is added
+      // Level browser/input audio, then add the fixed-level player audio.
+      // The limiter protects the combined mix when sources overlap.
       const gain = this._normalizer.process(l, r);
-      this._limiter.process(l * gain, r * gain, output, i);
+      this._limiter.process(
+        l * gain + (playerLeft ? playerLeft[i] : 0),
+        r * gain + (playerRight ? playerRight[i] : 0),
+        output,
+        i,
+      );
     }
 
     this._bufferBlock(output[0], output[1], length);

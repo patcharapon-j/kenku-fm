@@ -27,6 +27,7 @@ export interface PlaylistPlaybackState {
   repeat: Repeat;
   /** Length of the cross fade between tracks in milliseconds, 0 disables it */
   crossfade: number;
+  transportFade: number;
   track?: Track;
   playback?: Playback;
 }
@@ -38,6 +39,7 @@ const initialState: PlaylistPlaybackState = {
   shuffle: false,
   repeat: "playlist",
   crossfade: 0,
+  transportFade: 1500,
 };
 
 export const playlistPlaybackSlice = createSlice({
@@ -225,6 +227,11 @@ export const playlistPlaybackSlice = createSlice({
     repeat: (state, action: PayloadAction<Repeat>) => {
       state.repeat = action.payload;
     },
+    adjustTransportFade: (state, action: PayloadAction<number>) => {
+      state.transportFade = Number.isFinite(action.payload)
+        ? Math.max(0, Math.min(10000, action.payload))
+        : 1500;
+    },
     adjustCrossfade: (state, action: PayloadAction<number>) => {
       state.crossfade = action.payload;
     },
@@ -247,6 +254,7 @@ export const {
   shuffle,
   repeat,
   adjustCrossfade,
+  adjustTransportFade,
 } = playlistPlaybackSlice.actions;
 
 export default playlistPlaybackSlice.reducer;

@@ -38,3 +38,8 @@ export function toPlaybackURL(url: string): string {
 export function isWebAudioRoutable(url: string): boolean {
   return url.startsWith(MEDIA_SCHEME);
 }
+
+/** Use a processed copy only while it still belongs to this source. */
+export function normalizedSource(item: { url: string; normalization?: { source: string; url: string; version: number } }): string {
+  return item.normalization?.version === 1 && item.normalization.source === item.url ? item.normalization.url : item.url;
+}
