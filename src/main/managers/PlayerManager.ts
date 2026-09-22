@@ -1,4 +1,7 @@
-import { normalizeAudio } from "../audioNormalization";
+import {
+  normalizationConcurrency,
+  normalizeAudio,
+} from "../audioNormalization";
 import { ipcMain, BrowserWindow, webContents } from "electron";
 import Fastify, { FastifyInstance } from "fastify";
 import { registerRemote } from "../remote";
@@ -18,6 +21,7 @@ export class PlayerManager {
       if (event.sender.id !== this.registeredViewId || event.senderFrame !== event.sender.mainFrame) throw new Error("Player access required");
       return normalizeAudio(source);
     });
+    ipcMain.handle("PLAYER_NORMALIZE_CONCURRENCY", () => normalizationConcurrency);
     ipcMain.on("PLAYER_GET_URL", this._handleGetURL);
     ipcMain.on("PLAYER_GET_PRELOAD_URL", this._handleGetPreloadURL);
     ipcMain.on("PLAYER_GET_MEDIA_URL", this._handleGetMediaURL);
@@ -28,6 +32,7 @@ export class PlayerManager {
 
   destroy() {
     ipcMain.removeHandler("PLAYER_NORMALIZE_AUDIO");
+    ipcMain.removeHandler("PLAYER_NORMALIZE_CONCURRENCY");
     ipcMain.off("PLAYER_GET_URL", this._handleGetURL);
     ipcMain.off("PLAYER_GET_PRELOAD_URL", this._handleGetPreloadURL);
     ipcMain.off("PLAYER_GET_MEDIA_URL", this._handleGetMediaURL);

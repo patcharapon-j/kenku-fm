@@ -45,6 +45,8 @@ const validChannels: Channel[] = [
 
 const api = {
   normalizeAudio: (source: string): Promise<{ source: string; url: string; gainDb: number; version: number }> => ipcRenderer.invoke("PLAYER_NORMALIZE_AUDIO", source),
+  /** How many files the app processes at once, so progress can be reported honestly */
+  normalizationConcurrency: (): Promise<number> => ipcRenderer.invoke("PLAYER_NORMALIZE_CONCURRENCY"),
   on: (channel: Channel, callback: (...args: any[]) => any) => {
     if (validChannels.includes(channel)) {
       const newCallback = (_: any, ...args: any[]) => callback(args);
