@@ -50,6 +50,8 @@ export class StreamKitVoice {
   private _generation = 0;
   private _retryDelay = MIN_RETRY_DELAY;
   private _retryTimeout: NodeJS.Timeout | null = null;
+  /** Whether a room is being joined, which may replace the current one */
+  private _joining = false;
   private _state: VoiceRoomState = { status: "off" };
 
   constructor(
@@ -77,6 +79,7 @@ export class StreamKitVoice {
 
   stop(): void {
     this._generation += 1;
+    this._joining = false;
     this._clearRetry();
     this._url = null;
     this._token = null;
@@ -109,6 +112,7 @@ export class StreamKitVoice {
       this._setState({ status: "connecting" });
     }
 
+    this._joining = true;
     const room = new Room({
       adaptiveStream: false,
       dynacast: false,
@@ -141,6 +145,7 @@ export class StreamKitVoice {
       if (generation !== this._generation) {
         return;
       }
+      this._joining = false;
       this._setState({
         status: "error",
         message:
@@ -152,7 +157,11 @@ export class StreamKitVoice {
 
     const previous = this._room;
     this._room = room;
+    this._joining = false;
     this._retryDelay = MIN_RETRY_DELAY;
+    // Joining with the same identity has the server drop the room this one
+    // replaces, which can look like the room being lost while it happened
+    this._clearRetry();
     room.on(RoomEvent.Reconnecting, () => {
       if (this._room === room) {
         this._setState({ status: "reconnecting" });
@@ -168,7 +177,8 @@ export class StreamKitVoice {
         return;
       }
       this._room = null;
-      if (reason === DisconnectReason.CLIENT_INITIATED) {
+      // Dropped for the room being joined to take over, or left on purpose
+      if (this._joining || reason === DisconnectReason.CLIENT_INITIATED) {
         return;
       }
       // LiveKit gave up on resuming, or the room went away. The token in hand
