@@ -64,8 +64,23 @@ export function PlaylistRemote({
       }
     });
 
+    // Play a track as part of the playlist it was picked from, which matters
+    // when the same track has been added to more than one
+    window.player.on("PLAYER_REMOTE_PLAYLIST_PLAY_TRACK", (args) => {
+      const [playlistId, trackId] = args;
+      const playlist = playlists.playlists.byId[playlistId];
+      const track = playlists.tracks[trackId];
+      if (playlist && track && playlist.tracks.includes(trackId)) {
+        dispatch(
+          startQueue({ tracks: [...playlist.tracks], trackId, playlistId })
+        );
+        onPlay(track);
+      }
+    });
+
     return () => {
       window.player.removeAllListeners("PLAYER_REMOTE_PLAYLIST_PLAY");
+      window.player.removeAllListeners("PLAYER_REMOTE_PLAYLIST_PLAY_TRACK");
     };
   }, [onPlay, playlists, playbackShuffle]);
 

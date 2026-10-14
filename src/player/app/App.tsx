@@ -22,6 +22,7 @@ import { Soundboard } from "../features/soundboards/Soundboard";
 import { useSoundboardPlayback } from "../features/soundboards/useSoundboardPlayback";
 import { SoundboardRemote } from "../features/soundboards/SoundboardRemote";
 import { SoundboardPlaybackSync } from "../features/soundboards/SoundboardPlaybackSync";
+import { StreamKitBridge } from "../features/streamKit/StreamKitBridge";
 
 const WallPaper = styled("div")({
   position: "fixed",
@@ -98,6 +99,7 @@ export function App() {
       />
       <SoundboardRemote onPlay={soundboard.play} onStop={soundboard.stop} />
       <SoundboardPlaybackSync onSync={soundboard.sync} />
+      <StreamKitBridge />
       <Snackbar
         open={Boolean(errorMessage)}
         autoHideDuration={4000}

@@ -1,4 +1,5 @@
 import { isWebAudioRoutable, toPlaybackURL } from "./mediaURL";
+import { busInput, OutputBus } from "./outputBuses";
 
 /** Events emitted by a track, named to match the Howler events they replace */
 export type TrackEvent =
@@ -32,6 +33,11 @@ export type WebAudioTrackOptions = {
   mute?: boolean;
   loop?: boolean;
   autoplay?: boolean;
+  /**
+   * Output the track is mixed into before it reaches the speakers, which is
+   * what lets the Stream Kit take music and effects separately
+   */
+  bus?: OutputBus;
 };
 
 type Listener = {
@@ -69,7 +75,7 @@ const MAX_CURVE_STEPS = 512;
 let sharedContext: AudioContext | null = null;
 let contextUnavailable = false;
 
-function getAudioContext(): AudioContext | null {
+export function getAudioContext(): AudioContext | null {
   if (contextUnavailable) {
     return null;
   }
@@ -201,7 +207,9 @@ export class WebAudioTrack {
           .connect(this._transportGain)
           .connect(this._volumeGain)
           .connect(this._muteGain)
-          .connect(context.destination);
+          .connect(
+            options.bus ? busInput(context, options.bus) : context.destination,
+          );
         this._context = context;
       } catch {
         // An element can only be given to `createMediaElementSource` once and

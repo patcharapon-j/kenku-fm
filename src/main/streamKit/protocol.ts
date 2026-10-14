@@ -4,50 +4,17 @@
  * a one time code or reconnecting with the token a pairing handed out
  */
 
-export type Campaign = { id: string; name: string };
+import type {
+  Campaign,
+  Command,
+  Library,
+  NowPlaying,
+  Status,
+} from "../../types/streamKit";
+
+export type { Campaign, Command, Library, NowPlaying, Status };
 
 export type AppInfo = { version: string };
-
-export type Repeat = "off" | "playlist" | "track";
-
-export type Library = {
-  playlists: {
-    id: string;
-    title: string;
-    tracks: { id: string; title: string }[];
-  }[];
-  soundboards: {
-    id: string;
-    title: string;
-    sounds: { id: string; title: string }[];
-  }[];
-};
-
-export type NowPlaying = {
-  playing: boolean;
-  track: {
-    id: string;
-    title: string;
-    playlistId: string | null;
-    playlistTitle: string | null;
-    durationMs: number | null;
-    positionMs: number | null;
-  } | null;
-};
-
-export type Status = {
-  music: { volume: number; muted: boolean; shuffle: boolean; repeat: Repeat };
-  sfx: { volume: number };
-  outputs: { discord: boolean; streamKit: boolean };
-};
-
-export type Command =
-  | { kind: "play-playlist"; playlistId: string }
-  | { kind: "play-track"; playlistId: string; trackId: string }
-  | { kind: "playback"; action: "play" | "pause" | "next" | "previous" }
-  | { kind: "music-volume"; volume: number }
-  | { kind: "play-sound"; soundboardId: string; soundId: string }
-  | { kind: "stop-sounds" };
 
 export type Greeting =
   | { type: "pair"; code: string; app: AppInfo }
