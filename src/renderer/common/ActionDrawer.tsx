@@ -7,6 +7,7 @@ import Badge from "@mui/material/Badge";
 import { Toolbar, Stack, Typography, Link } from "@mui/material";
 import { OutputListItems } from "../features/output/OutputListItems";
 import { OutputMeter } from "../features/output/OutputMeter";
+import { StreamKitListItems } from "../features/streamKit/StreamKitListItems";
 import { InputListItems } from "../features/input/InputListItems";
 import { BookmarkListItems } from "../features/bookmarks/BookmarkListItems";
 import { Settings } from "../features/settings/Settings";
@@ -99,6 +100,7 @@ export function ActionDrawer() {
                 for more outputs
               </Typography>
             )}
+            <StreamKitListItems />
           </Stack>
         </Box>
         <Box
