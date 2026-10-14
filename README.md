@@ -13,6 +13,10 @@ Kenku FM is a desktop application for Windows, MacOS and Linux designed to be th
   <img src="./docs/example.png" alt="Kenku FM Interface" width="738">
 </p>
 
+## Stream Kit output
+
+This fork can also send the Kenku Player's Music and SFX to the [GLUniverse Stream Kit](https://stream.gluniverse.com) as two separate tracks in the Campaign's Voice Room, beside Discord or instead of it, and take playback commands from the Stream Kit console. Pair it from the **Stream Kit** section under Outputs. See [docs/STREAM_KIT.md](./docs/STREAM_KIT.md).
+
 ## Installing
 
 Prebuilt binaries can be found at [kenku.fm](https://www.kenku.fm) or from the [GitHub releases](https://github.com/owlbear-rodeo/kenku-fm/releases).
