@@ -40,6 +40,8 @@ Docs on using Kenku FM can be found [here](https://www.kenku.fm/docs).
 
 Kenku FM uses [Yarn](https://yarnpkg.com/) as a package manager and [Electron Forge](https://www.electronforge.io/) as an Electron builder.
 
+Build with Node 22 (see `.nvmrc`). On Node 24 the packager quits without an error while it unpacks Electron, so `yarn` refuses to install there. Python and the Visual C++ build tools aren't needed: without them `zlib-sync` is skipped, and Discord works without it.
+
 To install all the dependencies run:
 
 `yarn`
