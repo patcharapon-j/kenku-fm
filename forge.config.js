@@ -1,6 +1,23 @@
 const path = require("path");
 
+// zlib-sync is an optional dependency: it compiles from source, so it is missing on a machine
+// without the Visual C++ build tools, and the externals plugin can only list modules that exist.
+function installed(name) {
+  try {
+    require.resolve(`${name}/package.json`, { paths: [__dirname] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const config = {
+  // @discordjs/opus ships a prebuilt N-API binary, which Electron loads as it is, and zlib-sync is
+  // optional (discord.js falls back to uncompressed gateway traffic without it), so neither needs
+  // Python and the Visual C++ build tools to package the app.
+  rebuildConfig: {
+    ignoreModules: ["@discordjs/opus", "zlib-sync"],
+  },
   packagerConfig: {
     executableName: "kenku-fm",
     out: "./out",
@@ -101,7 +118,7 @@ const config = {
           "@discordjs/opus",
           "prism-media",
           "@snazzah/davey",
-          "zlib-sync",
+          ...(installed("zlib-sync") ? ["zlib-sync"] : []),
         ],
         includeDeps: true,
       },

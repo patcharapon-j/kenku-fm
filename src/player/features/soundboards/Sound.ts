@@ -3,6 +3,7 @@ import { TypedEmitter } from "tiny-typed-emitter";
 
 import { toPlaybackURL } from "../../common/mediaURL";
 import { WebAudioTrack } from "../../common/WebAudioTrack";
+import { bridgeHowler } from "../../common/outputBuses";
 
 export interface SoundEvents {
   error: () => void;
@@ -75,6 +76,7 @@ export class Sound extends TypedEmitter<SoundEvents> {
               volume: 0,
               loop: false,
               autoplay: true,
+              bus: "sfx",
             })
           : new Howl({
               ...this.options,
@@ -135,8 +137,13 @@ export class Sound extends TypedEmitter<SoundEvents> {
         playback.on("loaderror", handleError);
         playback.on("playerror", handleError);
 
-        if (playback instanceof Howl && !(playback as any)._sounds[0]) {
-          handleError();
+        if (playback instanceof Howl) {
+          // Howler only has a context once its first sound exists, so the
+          // Stream Kit's effects track picks it up from here
+          bridgeHowler();
+          if (!(playback as any)._sounds[0]) {
+            handleError();
+          }
         }
 
         this._playback = playback;

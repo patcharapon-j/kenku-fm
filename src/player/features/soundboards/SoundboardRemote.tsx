@@ -49,6 +49,18 @@ export function SoundboardRemote({ onPlay, onStop }: SoundboardRemoteProps) {
   }, [onPlay, soundboards]);
 
   useEffect(() => {
+    window.player.on("PLAYER_REMOTE_SOUNDBOARD_STOP_ALL", () => {
+      for (const id of Object.keys(playback.playback)) {
+        onStop(id);
+      }
+    });
+
+    return () => {
+      window.player.removeAllListeners("PLAYER_REMOTE_SOUNDBOARD_STOP_ALL");
+    };
+  }, [onStop, playback]);
+
+  useEffect(() => {
     window.player.on("PLAYER_REMOTE_SOUNDBOARD_PLAYBACK_REQUEST", () => {
       const sounds = Object.values(playback.playback);
       window.player.soundboardPlaybackReply({

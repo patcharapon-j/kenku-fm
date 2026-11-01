@@ -13,6 +13,10 @@ Kenku FM is a desktop application for Windows, MacOS and Linux designed to be th
   <img src="./docs/example.png" alt="Kenku FM Interface" width="738">
 </p>
 
+## Stream Kit output
+
+This fork can also send the Kenku Player's Music and SFX to the [GLUniverse Stream Kit](https://stream.gluniverse.com) as two separate tracks in the Campaign's Voice Room, beside Discord or instead of it, and take playback commands from the Stream Kit console. Pair it from the **Stream Kit** section under Outputs. See [docs/STREAM_KIT.md](./docs/STREAM_KIT.md).
+
 ## Installing
 
 Prebuilt binaries can be found at [kenku.fm](https://www.kenku.fm) or from the [GitHub releases](https://github.com/owlbear-rodeo/kenku-fm/releases).
@@ -35,6 +39,8 @@ Docs on using Kenku FM can be found [here](https://www.kenku.fm/docs).
 ## Building
 
 Kenku FM uses [Yarn](https://yarnpkg.com/) as a package manager and [Electron Forge](https://www.electronforge.io/) as an Electron builder.
+
+Build with Node 22 (see `.nvmrc`). On Node 24 the packager quits without an error while it unpacks Electron, so `yarn` refuses to install there. Python and the Visual C++ build tools aren't needed: without them `zlib-sync` is skipped, and Discord works without it.
 
 To install all the dependencies run:
 

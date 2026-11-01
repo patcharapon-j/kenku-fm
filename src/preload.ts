@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import { BrowserViewManagerPreload } from "./preload/managers/BrowserViewManagerPreload";
+import { StreamKitState } from "./types/streamKit";
 
 const viewManager = new BrowserViewManagerPreload();
 
@@ -25,7 +26,8 @@ type Channel =
   | "PLAYER_REMOTE_ENABLED"
   | "AUDIO_CAPTURE_LEVELS"
   | "AUDIO_CAPTURE_ENCODER"
-  | "AUDIO_CAPTURE_WARNING";
+  | "AUDIO_CAPTURE_WARNING"
+  | "STREAM_KIT_STATE";
 
 const validChannels: Channel[] = [
   "ERROR",
@@ -49,6 +51,7 @@ const validChannels: Channel[] = [
   "AUDIO_CAPTURE_LEVELS",
   "AUDIO_CAPTURE_ENCODER",
   "AUDIO_CAPTURE_WARNING",
+  "STREAM_KIT_STATE",
 ];
 
 // Capture audio when new views are loaded
@@ -185,6 +188,20 @@ const api = {
     streamingMode: "lowLatency" | "balanced" | "performance",
   ) => {
     ipcRenderer.send("AUDIO_CAPTURE_START", streamingMode);
+  },
+  streamKitGetState: (): Promise<StreamKitState> => {
+    return ipcRenderer.invoke("STREAM_KIT_GET_STATE");
+  },
+  /** Pair with the one time code copied off the Stream Kit console */
+  streamKitPair: (url: string, code: string) => {
+    ipcRenderer.send("STREAM_KIT_PAIR", url, code);
+  },
+  streamKitUnpair: () => {
+    ipcRenderer.send("STREAM_KIT_UNPAIR");
+  },
+  /** Turn publishing music and effects into the Voice Room on or off */
+  streamKitSetEnabled: (enabled: boolean) => {
+    ipcRenderer.send("STREAM_KIT_SET_ENABLED", enabled);
   },
   toggleMaximize: () => {
     ipcRenderer.send("WINDOW_TOGGLE_MAXIMIZE");

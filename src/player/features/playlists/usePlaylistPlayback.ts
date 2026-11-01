@@ -525,6 +525,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
         src: normalizedSource(move.track),
         mute: store.getState().playlistPlayback.muted,
         volume: 0,
+        bus: "music",
       });
       // A track that failed to load can never report a load again, so it has
       // to be dropped here rather than handed to `play` where it would stall
@@ -610,6 +611,7 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
             src: normalizedSource(track),
             mute: store.getState().playlistPlayback.muted,
             volume: 0,
+            bus: "music",
           });
 
         trackRef.current = playback;

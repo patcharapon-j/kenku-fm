@@ -5,6 +5,12 @@ import {
   SoundboardPlaybackReply,
   SoundboardsReply,
 } from "../types/player";
+import {
+  Library,
+  NowPlaying,
+  PlayerStatus,
+  VoiceRoomState,
+} from "../types/streamKit";
 
 type Channel =
   | "PLAYER_REMOTE_PLAYLIST_GET_ALL_REQUEST"
@@ -22,7 +28,11 @@ type Channel =
   | "PLAYER_REMOTE_SOUNDBOARD_GET_ALL_REQUEST"
   | "PLAYER_REMOTE_SOUNDBOARD_PLAY"
   | "PLAYER_REMOTE_SOUNDBOARD_STOP"
-  | "PLAYER_REMOTE_SOUNDBOARD_PLAYBACK_REQUEST";
+  | "PLAYER_REMOTE_SOUNDBOARD_PLAYBACK_REQUEST"
+  | "PLAYER_REMOTE_PLAYLIST_PLAY_TRACK"
+  | "PLAYER_REMOTE_SOUNDBOARD_STOP_ALL"
+  | "PLAYER_STREAM_KIT_VOICE"
+  | "PLAYER_STREAM_KIT_RESEND";
 
 const validChannels: Channel[] = [
   "PLAYER_REMOTE_PLAYLIST_GET_ALL_REQUEST",
@@ -41,6 +51,10 @@ const validChannels: Channel[] = [
   "PLAYER_REMOTE_SOUNDBOARD_PLAY",
   "PLAYER_REMOTE_SOUNDBOARD_STOP",
   "PLAYER_REMOTE_SOUNDBOARD_PLAYBACK_REQUEST",
+  "PLAYER_REMOTE_PLAYLIST_PLAY_TRACK",
+  "PLAYER_REMOTE_SOUNDBOARD_STOP_ALL",
+  "PLAYER_STREAM_KIT_VOICE",
+  "PLAYER_STREAM_KIT_RESEND",
 ];
 
 const api = {
@@ -69,6 +83,26 @@ const api = {
   },
   soundboardGetAllReply: (soundboards: SoundboardsReply) => {
     ipcRenderer.send("PLAYER_REMOTE_SOUNDBOARD_GET_ALL_REPLY", soundboards);
+  },
+  /** Tell the main process the player is up, so it sends the Voice Room again */
+  streamKitReady: () => {
+    ipcRenderer.send("PLAYER_STREAM_KIT_READY");
+  },
+  streamKitLibrary: (library: Library) => {
+    ipcRenderer.send("PLAYER_STREAM_KIT_LIBRARY", library);
+  },
+  streamKitNowPlaying: (nowPlaying: NowPlaying) => {
+    ipcRenderer.send("PLAYER_STREAM_KIT_NOW_PLAYING", nowPlaying);
+  },
+  streamKitStatus: (status: PlayerStatus) => {
+    ipcRenderer.send("PLAYER_STREAM_KIT_STATUS", status);
+  },
+  streamKitVoiceState: (state: VoiceRoomState) => {
+    ipcRenderer.send("PLAYER_STREAM_KIT_VOICE_STATE", state);
+  },
+  /** Ask the Stream Kit for fresh Voice Room credentials */
+  streamKitVoicePlease: () => {
+    ipcRenderer.send("PLAYER_STREAM_KIT_VOICE_PLEASE");
   },
   getPathForFile: (file: File) => {
     return webUtils.getPathForFile(file);
