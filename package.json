@@ -90,7 +90,12 @@
     "redux-persist": "^6.0.0",
     "tiny-typed-emitter": "^2.1.0",
     "uuid": "^10.0.0",
-    "ws": "^8.19.0",
+    "ws": "^8.19.0"
+  },
+  "optionalDependencies": {
     "zlib-sync": "^0.1.10"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
