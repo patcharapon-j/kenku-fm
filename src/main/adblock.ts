@@ -39,48 +39,47 @@ function isAppPage(url: string | undefined): boolean {
   }
 }
 
-async function loadBlocker(): Promise<ElectronBlocker> {
-  const cachePath = path.join(app.getPath("userData"), "adblock-engine.bin");
-  const fetchLists = (url: string) => net.fetch(url);
+function cachePath() {
+  return path.join(app.getPath("userData"), "adblock-engine.bin");
+}
 
-  let cached: Buffer | undefined;
-  let stale = true;
+async function readCachedBlocker(): Promise<
+  { blocker: ElectronBlocker; stale: boolean } | undefined
+> {
   try {
     const [stats, buffer] = await Promise.all([
-      fs.stat(cachePath),
-      fs.readFile(cachePath),
+      fs.stat(cachePath()),
+      fs.readFile(cachePath()),
     ]);
-    cached = buffer;
-    stale = Date.now() - stats.mtimeMs > MAX_CACHE_AGE_MS;
+    return {
+      blocker: ElectronBlocker.deserialize(new Uint8Array(buffer)),
+      stale: Date.now() - stats.mtimeMs > MAX_CACHE_AGE_MS,
+    };
   } catch {
-    // No engine cached yet
+    // Nothing cached yet, or a cache from an older version of the engine
+    return undefined;
   }
+}
 
-  if (cached && !stale) {
-    try {
-      return ElectronBlocker.deserialize(new Uint8Array(cached));
-    } catch {
-      // A cache from an older version of the engine, rebuild it below
+async function buildBlocker(): Promise<ElectronBlocker> {
+  // Ghostery reads the body without checking the status, so an error page
+  // would otherwise be parsed as an (empty) list and cached for a week
+  const fetchList = async (url: string) => {
+    const response = await net.fetch(url);
+    if (!response.ok) {
+      throw new Error(`${response.status} fetching ${url}`);
     }
-  }
-
-  try {
-    // uBlock Origin's own filter lists, alongside EasyList, EasyPrivacy and
-    // Peter Lowe's list, which uBlock Origin also turns on by default
-    const blocker = await ElectronBlocker.fromLists(
-      fetchLists,
-      adsAndTrackingLists,
-      { enableCompression: true }
-    );
-    await fs.writeFile(cachePath, blocker.serialize());
-    return blocker;
-  } catch (err) {
-    // Offline: an outdated engine still blocks more than none
-    if (cached) {
-      return ElectronBlocker.deserialize(new Uint8Array(cached));
-    }
-    throw err;
-  }
+    return response;
+  };
+  // uBlock Origin's own filter lists, alongside EasyList, EasyPrivacy and
+  // Peter Lowe's list, which uBlock Origin also turns on by default
+  const blocker = await ElectronBlocker.fromLists(
+    fetchList,
+    adsAndTrackingLists,
+    { enableCompression: true }
+  );
+  await fs.writeFile(cachePath(), blocker.serialize());
+  return blocker;
 }
 
 /**
@@ -90,19 +89,33 @@ async function loadBlocker(): Promise<ElectronBlocker> {
  *
  * Listeners are wired here rather than with `enableBlockingInSession` so the
  * app's own pages are left alone. They're in place at once, so tabs restored
- * at startup get cosmetic filters, and requests pass until the lists load.
+ * at startup get cosmetic filters. A cached engine is used straight away, even
+ * an outdated one while fresh lists download; only on the very first launch do
+ * requests pass until the lists load.
  */
 export function enableAdblock(session: Session) {
   let blocker: ElectronBlocker | undefined;
-  const loading = loadBlocker()
-    .then((loaded) => {
-      blocker = loaded;
-      return loaded;
-    })
-    .catch((err): undefined => {
-      console.error("Adblock disabled, unable to load the filter lists:", err);
-      return undefined;
-    });
+  const loading = (async () => {
+    const cached = await readCachedBlocker();
+    if (cached) {
+      blocker = cached.blocker;
+      if (cached.stale) {
+        buildBlocker()
+          .then((fresh) => {
+            blocker = fresh;
+          })
+          .catch((err) => {
+            console.error("Unable to refresh the adblock filter lists:", err);
+          });
+      }
+      return blocker;
+    }
+    blocker = await buildBlocker();
+    return blocker;
+  })().catch((err): undefined => {
+    console.error("Adblock disabled, unable to load the filter lists:", err);
+    return undefined;
+  });
 
   session.webRequest.onBeforeRequest(
     { urls: ["<all_urls>"] },
@@ -140,14 +153,14 @@ export function enableAdblock(session: Session) {
       if (isAppPage(event.sender.getURL())) {
         return;
       }
-      const loaded = await loading;
+      const loaded = blocker ?? (await loading);
       return loaded?.onInjectCosmeticFilters(event, url, msg);
     }
   );
   ipcMain.handle(
     "@ghostery/adblocker/is-mutation-observer-enabled",
     async (event) => {
-      const loaded = await loading;
+      const loaded = blocker ?? (await loading);
       return loaded ? loaded.onIsMutationObserverEnabled(event) : false;
     }
   );
