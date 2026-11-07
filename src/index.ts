@@ -15,6 +15,7 @@ import { SessionManager } from "./main/managers/SessionManager";
 import { runAutoUpdate } from "./autoUpdate";
 import { handleMediaProtocol, registerMediaScheme } from "./main/mediaProtocol";
 import { getSavedBounds, saveWindowBounds } from "./bounds";
+import { enableAdblock } from "./main/adblock";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -127,6 +128,8 @@ if (!hasSingleInstanceLock) {
     }
 
     handleMediaProtocol();
+
+    enableAdblock(session.defaultSession);
 
     window = createWindow();
 
