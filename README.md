@@ -17,6 +17,10 @@ Kenku FM is a desktop application for Windows, MacOS and Linux designed to be th
 
 This fork can also send the Kenku Player's Music and SFX to the [GLUniverse Stream Kit](https://stream.gluniverse.com) as two separate tracks in the Campaign's Voice Room, beside Discord or instead of it, and take playback commands from the Stream Kit console. Pair it from the **Stream Kit** section under Outputs. See [docs/STREAM_KIT.md](./docs/STREAM_KIT.md).
 
+## Ad blocking
+
+Browser tabs block ads and trackers with uBlock Origin's filter lists (plus EasyList, EasyPrivacy and Peter Lowe's list, which uBlock Origin turns on by default), run by [Ghostery's adblocker](https://github.com/ghostery/adblocker) since Electron can't host the uBlock Origin extension. The lists download on first launch and refresh weekly, kept in `adblock-engine.bin` in the app's data folder. Kenku's own pages are never filtered.
+
 ## Installing
 
 Prebuilt binaries can be found at [kenku.fm](https://www.kenku.fm) or from the [GitHub releases](https://github.com/owlbear-rodeo/kenku-fm/releases).
