@@ -118,6 +118,7 @@ const config = {
           "@discordjs/opus",
           "prism-media",
           "@snazzah/davey",
+          "@ghostery/adblocker-electron",
           ...(installed("zlib-sync") ? ["zlib-sync"] : []),
         ],
         includeDeps: true,

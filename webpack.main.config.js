@@ -18,5 +18,7 @@ module.exports = {
     "prism-media": "commonjs2 prism-media",
     "@snazzah/davey": "commonjs2 @snazzah/davey",
     "zlib-sync": "commonjs2 zlib-sync",
+    // Resolves its cosmetic filtering preload by path at runtime
+    "@ghostery/adblocker-electron": "commonjs2 @ghostery/adblocker-electron",
   },
 };
