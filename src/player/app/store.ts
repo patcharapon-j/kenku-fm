@@ -3,6 +3,7 @@ import playlistsReducer from "../features/playlists/playlistsSlice";
 import soundboardsReducer from "../features/soundboards/soundboardsSlice";
 import playlsitPlaybackReducer from "../features/playlists/playlistPlaybackSlice";
 import soundboardPlaybackReducer from "../features/soundboards/soundboardPlaybackSlice";
+import previewReducer from "../features/preview/previewSlice";
 
 import {
   persistStore,
@@ -23,6 +24,13 @@ const playbackPersistConfig = {
   whitelist: ["volume", "muted", "shuffle", "repeat", "crossfade", "transportFade"],
 };
 
+const previewPersistConfig = {
+  key: "preview",
+  version: 1,
+  storage,
+  whitelist: ["volume", "muted", "duckLiveMonitor"],
+};
+
 const rootReducer = combineReducers({
   playlists: playlistsReducer,
   soundboards: soundboardsReducer,
@@ -31,6 +39,7 @@ const rootReducer = combineReducers({
     playlsitPlaybackReducer
   ),
   soundboardPlayback: soundboardPlaybackReducer,
+  preview: persistReducer(previewPersistConfig, previewReducer),
 });
 
 const persistConfig = {

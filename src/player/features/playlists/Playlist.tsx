@@ -20,15 +20,21 @@ import { backgrounds, isBackground } from "../../backgrounds";
 import { useFolderDrop } from "../../common/useFolderDrop";
 import { addTracksToQueueIfNeeded, startQueue } from "./playlistPlaybackSlice";
 import { PlaylistSettings } from "./PlaylistSettings";
-import { addTracks, removePlaylist, Track } from "./playlistsSlice";
+import {
+  addTracks,
+  Playlist as PlaylistType,
+  removePlaylist,
+  Track,
+} from "./playlistsSlice";
 import { PlaylistTracks } from "./PlaylistTracks";
 import { TrackAdd } from "./TrackAdd";
 
 type PlaylistProps = {
   onPlay: (track: Track) => void;
+  onPreview: (track: Track, playlist: PlaylistType) => void;
 };
 
-export function Playlist({ onPlay }: PlaylistProps) {
+export function Playlist({ onPlay, onPreview }: PlaylistProps) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const playlists = useSelector((state: RootState) => state.playlists);
@@ -75,6 +81,13 @@ export function Playlist({ onPlay }: PlaylistProps) {
       let tracks = [...playlist.tracks];
       dispatch(startQueue({ tracks, trackId, playlistId: playlist.id }));
       onPlay(track);
+    }
+  }
+
+  function handleTrackPreview(trackId: string) {
+    const track = playlists.tracks[trackId];
+    if (track) {
+      onPreview(track, playlist);
     }
   }
 
@@ -157,6 +170,7 @@ export function Playlist({ onPlay }: PlaylistProps) {
           items={items}
           playlist={playlist}
           onPlay={handleTrackPlay}
+          onPreview={handleTrackPreview}
         />
         <Backdrop
           open={dragging}

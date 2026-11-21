@@ -178,11 +178,18 @@ export const playlistPlaybackSlice = createSlice({
     },
     playTrack: (
       state,
-      action: PayloadAction<{ track: Track; duration: number }>,
+      action: PayloadAction<{
+        track: Track;
+        duration: number;
+        progress?: number;
+      }>,
     ) => {
       state.track = action.payload.track;
       state.playing = true;
-      state.playback = { progress: 0, duration: action.payload.duration };
+      state.playback = {
+        progress: action.payload.progress ?? 0,
+        duration: action.payload.duration,
+      };
     },
     stopTrack: (state) => {
       state.track = undefined;

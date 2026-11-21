@@ -11,6 +11,7 @@ import {
   PlayerStatus,
   VoiceRoomState,
 } from "../types/streamKit";
+import { PreviewLoadCommand } from "../types/preview";
 
 type Channel =
   | "PLAYER_REMOTE_PLAYLIST_GET_ALL_REQUEST"
@@ -32,7 +33,8 @@ type Channel =
   | "PLAYER_REMOTE_PLAYLIST_PLAY_TRACK"
   | "PLAYER_REMOTE_SOUNDBOARD_STOP_ALL"
   | "PLAYER_STREAM_KIT_VOICE"
-  | "PLAYER_STREAM_KIT_RESEND";
+  | "PLAYER_STREAM_KIT_RESEND"
+  | "PLAYER_PREVIEW_STATE";
 
 const validChannels: Channel[] = [
   "PLAYER_REMOTE_PLAYLIST_GET_ALL_REQUEST",
@@ -55,6 +57,7 @@ const validChannels: Channel[] = [
   "PLAYER_REMOTE_SOUNDBOARD_STOP_ALL",
   "PLAYER_STREAM_KIT_VOICE",
   "PLAYER_STREAM_KIT_RESEND",
+  "PLAYER_PREVIEW_STATE",
 ];
 
 const api = {
@@ -103,6 +106,31 @@ const api = {
   /** Ask the Stream Kit for fresh Voice Room credentials */
   streamKitVoicePlease: () => {
     ipcRenderer.send("PLAYER_STREAM_KIT_VOICE_PLEASE");
+  },
+  /** GM-only preview playback routed through the capture window's monitor output */
+  previewLoad: (command: PreviewLoadCommand) => {
+    ipcRenderer.send("PLAYER_PREVIEW_LOAD", command);
+  },
+  previewPlay: () => {
+    ipcRenderer.send("PLAYER_PREVIEW_PLAY");
+  },
+  previewPause: () => {
+    ipcRenderer.send("PLAYER_PREVIEW_PAUSE");
+  },
+  previewStop: () => {
+    ipcRenderer.send("PLAYER_PREVIEW_STOP");
+  },
+  previewSeek: (to: number) => {
+    ipcRenderer.send("PLAYER_PREVIEW_SEEK", to);
+  },
+  previewSetVolume: (volume: number) => {
+    ipcRenderer.send("PLAYER_PREVIEW_SET_VOLUME", volume);
+  },
+  previewSetMuted: (muted: boolean) => {
+    ipcRenderer.send("PLAYER_PREVIEW_SET_MUTED", muted);
+  },
+  previewSetDuck: (enabled: boolean) => {
+    ipcRenderer.send("PLAYER_PREVIEW_SET_DUCK", enabled);
   },
   getPathForFile: (file: File) => {
     return webUtils.getPathForFile(file);

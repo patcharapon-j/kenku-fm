@@ -572,7 +572,11 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
   );
 
   const play = useCallback(
-    (track: Track) => {
+    (track: Track, startAt?: number) => {
+      const requestedStart =
+        typeof startAt === "number" && Number.isFinite(startAt) && startAt > 0
+          ? startAt
+          : 0;
       clearCrossFade();
       stopFade();
       // A track that starts fades in with the cross fade, so the transport
@@ -615,11 +619,23 @@ export function usePlaylistPlayback(onError: (message: string) => void) {
           });
 
         trackRef.current = playback;
+        if (requestedStart > 0) {
+          playback.seek(requestedStart);
+        }
         const handleLoad = () => {
+          const duration = playback.duration();
+          const startPos =
+            requestedStart > 0 && Number.isFinite(duration) && duration > 0
+              ? Math.min(requestedStart, Math.max(0, duration - 0.5))
+              : requestedStart;
+          if (startPos > 0) {
+            playback.seek(startPos);
+          }
           dispatch(
             playTrack({
               track,
-              duration: Math.floor(playback.duration()),
+              duration: Math.floor(duration),
+              progress: Math.floor(startPos),
             }),
           );
           // Fade out previous track and fade in new track

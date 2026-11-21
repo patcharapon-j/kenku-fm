@@ -19,7 +19,12 @@ import { RootState } from "../../app/store";
 import { SoundAdd } from "./SoundAdd";
 import { SoundboardSettings } from "./SoundboardSettings";
 import { SoundboardSounds } from "./SoundboardSounds";
-import { addSounds, removeSoundboard, Sound } from "./soundboardsSlice";
+import {
+  addSounds,
+  removeSoundboard,
+  Sound,
+  Soundboard as SoundboardType,
+} from "./soundboardsSlice";
 
 import { backgrounds, isBackground } from "../../backgrounds";
 import { useFolderDrop } from "../../common/useFolderDrop";
@@ -27,9 +32,10 @@ import { useFolderDrop } from "../../common/useFolderDrop";
 type SoundboardProps = {
   onPlay: (sound: Sound) => void;
   onStop: (id: string) => void;
+  onPreview: (sound: Sound, soundboard: SoundboardType) => void;
 };
 
-export function Soundboard({ onPlay, onStop }: SoundboardProps) {
+export function Soundboard({ onPlay, onStop, onPreview }: SoundboardProps) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { soundboardId } = useParams();
@@ -150,6 +156,7 @@ export function Soundboard({ onPlay, onStop }: SoundboardProps) {
           soundboard={soundboard}
           onPlay={onPlay}
           onStop={onStop}
+          onPreview={(sound) => onPreview(sound, soundboard)}
         />
         <Backdrop
           open={dragging}

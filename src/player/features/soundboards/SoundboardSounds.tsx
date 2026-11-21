@@ -35,15 +35,20 @@ type SoundboardSoundsProps = {
   soundboard: Soundboard;
   onPlay: (sound: Sound) => void;
   onStop: (id: string) => void;
+  onPreview: (sound: Sound) => void;
 };
 
 export function SoundboardSounds({
   soundboard,
   onPlay,
   onStop,
+  onPreview,
 }: SoundboardSoundsProps) {
   const dispatch = useDispatch();
   const sounds = useSelector((state: RootState) => state.soundboards.sounds);
+  const previewOpen = useSelector((state: RootState) =>
+    Boolean(state.preview.item),
+  );
   const { visible, controls, active } = useLibraryFilter(
     soundboard.sounds.map((id) => sounds[id]),
   );
@@ -103,7 +108,7 @@ export function SoundboardSounds({
         sx={{
           width: "100%",
           margin: "0 auto",
-          marginBottom: "240px",
+          marginBottom: previewOpen ? "360px" : "240px",
         }}
         container
         spacing={2}
@@ -126,6 +131,7 @@ export function SoundboardSounds({
                     soundboard={soundboard}
                     onPlay={onPlay}
                     onStop={onStop}
+                    onPreview={onPreview}
                   />
                 </SortableItem>
               </Grid>
@@ -137,6 +143,7 @@ export function SoundboardSounds({
                   soundboard={soundboard}
                   onPlay={onPlay}
                   onStop={onStop}
+                  onPreview={onPreview}
                 />
               ) : null}
             </DragOverlay>

@@ -54,7 +54,8 @@ export function MonitorSettings({ open, onClose }: MonitorSettingsProps) {
       <DialogContent>
         <DialogContentText variant="caption">
           Monitoring plays the mix back on this computer. It doesn&apos;t change
-          what Discord receives.
+          what Discord receives. The selected device also carries GM-only
+          previews, even when This Computer is unticked.
         </DialogContentText>
         <Stack mt={2}>
           <Stack direction="row" justifyContent="space-between">

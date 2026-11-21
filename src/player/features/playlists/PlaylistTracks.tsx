@@ -24,7 +24,8 @@ import {
 import { TrackItem } from "./TrackItem";
 import { SortableItem } from "../../common/SortableItem";
 
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../../app/store";
 import { Playlist, Track, moveTrack } from "./playlistsSlice";
 import { moveQueueIfNeeded } from "./playlistPlaybackSlice";
 
@@ -34,14 +35,19 @@ type PlaylistTracksProps = {
   items: Track[];
   playlist: Playlist;
   onPlay: (id: string) => void;
+  onPreview: (id: string) => void;
 };
 
 export function PlaylistTracks({
   items,
   playlist,
   onPlay,
+  onPreview,
 }: PlaylistTracksProps) {
   const dispatch = useDispatch();
+  const previewOpen = useSelector((state: RootState) =>
+    Boolean(state.preview.item),
+  );
   const { visible, controls, active } = useLibraryFilter(items);
 
   const pointerSensor = useSensor(PointerSensor, {
@@ -107,7 +113,7 @@ export function PlaylistTracks({
           minWidth: 360,
           maxWidth: 720,
           margin: "0 auto",
-          marginBottom: "240px",
+          marginBottom: previewOpen ? "360px" : "240px",
         }}
       >
         {controls}
@@ -123,7 +129,12 @@ export function PlaylistTracks({
           >
             {visible.map((item) => (
               <SortableItem key={item.id} id={item.id} disabled={active}>
-                <TrackItem track={item} playlist={playlist} onPlay={onPlay} />
+                <TrackItem
+                  track={item}
+                  playlist={playlist}
+                  onPlay={onPlay}
+                  onPreview={onPreview}
+                />
               </SortableItem>
             ))}
             <DragOverlay>
@@ -132,6 +143,7 @@ export function PlaylistTracks({
                   track={items.find((track) => track.id === dragId)}
                   playlist={playlist}
                   onPlay={onPlay}
+                  onPreview={onPreview}
                 />
               ) : null}
             </DragOverlay>

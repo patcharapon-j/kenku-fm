@@ -23,6 +23,7 @@ import { useSoundboardPlayback } from "../features/soundboards/useSoundboardPlay
 import { SoundboardRemote } from "../features/soundboards/SoundboardRemote";
 import { SoundboardPlaybackSync } from "../features/soundboards/SoundboardPlaybackSync";
 import { StreamKitBridge } from "../features/streamKit/StreamKitBridge";
+import { usePreviewPlayback } from "../features/preview/usePreviewPlayback";
 
 const WallPaper = styled("div")({
   position: "fixed",
@@ -44,6 +45,12 @@ export function App() {
 
   const playlist = usePlaylistPlayback(handleError);
   const soundboard = useSoundboardPlayback(handleError);
+  const preview = usePreviewPlayback({
+    onError: handleError,
+    onLivePlaylistPlay: playlist.play,
+    onLivePlaylistSeek: playlist.seek,
+    onLiveSoundboardPlay: soundboard.play,
+  });
 
   return (
     <NormalizationProvider>
@@ -52,7 +59,12 @@ export function App() {
         <Route
           path="/"
           element={
-            <Home onPlayTrack={playlist.play} onPlaySound={soundboard.play} />
+            <Home
+              onPlayTrack={playlist.play}
+              onPlaySound={soundboard.play}
+              onPreviewTrack={preview.previewTrack}
+              onPreviewSound={preview.previewSound}
+            />
           }
         />
         <Route
@@ -61,7 +73,12 @@ export function App() {
         />
         <Route
           path="playlists/:playlistId"
-          element={<Playlist onPlay={playlist.play} />}
+          element={
+            <Playlist
+              onPlay={playlist.play}
+              onPreview={preview.previewTrack}
+            />
+          }
         />
         <Route
           path="soundboards"
@@ -70,7 +87,11 @@ export function App() {
         <Route
           path="soundboards/:soundboardId"
           element={
-            <Soundboard onPlay={soundboard.play} onStop={soundboard.stop} />
+            <Soundboard
+              onPlay={soundboard.play}
+              onStop={soundboard.stop}
+              onPreview={preview.previewSound}
+            />
           }
         />
       </Routes>
@@ -79,6 +100,15 @@ export function App() {
         onPlaylistNext={playlist.next}
         onPlaylistPrevious={playlist.previous}
         onSoundboardStop={soundboard.stop}
+        preview={{
+          onTogglePlay: preview.togglePlay,
+          onSeek: preview.seek,
+          onVolumeChange: preview.setVolume,
+          onMuteToggle: preview.toggleMute,
+          onDuckToggle: preview.toggleDuck,
+          onPromoteToLive: preview.promoteToLive,
+          onClose: preview.close,
+        }}
       />
       <PlaylistMediaSession
         onSeek={playlist.seek}

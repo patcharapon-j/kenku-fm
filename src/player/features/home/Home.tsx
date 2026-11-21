@@ -24,10 +24,10 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { RootState } from "../../app/store";
 import { PlaylistAdd } from "../playlists/PlaylistAdd";
 import { PlaylistItem } from "../playlists/PlaylistItem";
-import { Track } from "../playlists/playlistsSlice";
+import { Playlist, Track } from "../playlists/playlistsSlice";
 import { SoundboardAdd } from "../soundboards/SoundboardAdd";
 import { SoundboardItem } from "../soundboards/SoundboardItem";
-import { Sound } from "../soundboards/soundboardsSlice";
+import { Sound, Soundboard } from "../soundboards/soundboardsSlice";
 
 const PlaylistsLink = React.forwardRef<
   HTMLAnchorElement,
@@ -42,12 +42,22 @@ const SoundboardsLink = React.forwardRef<
 type HomeProps = {
   onPlayTrack: (track: Track) => void;
   onPlaySound: (sound: Sound) => void;
+  onPreviewTrack: (track: Track, playlist: Playlist) => void;
+  onPreviewSound: (sound: Sound, soundboard: Soundboard) => void;
 };
 
-export function Home({ onPlayTrack, onPlaySound }: HomeProps) {
+export function Home({
+  onPlayTrack,
+  onPlaySound,
+  onPreviewTrack,
+  onPreviewSound,
+}: HomeProps) {
   const navigate = useNavigate();
   const playlists = useSelector((state: RootState) => state.playlists);
   const soundboards = useSelector((state: RootState) => state.soundboards);
+  const previewOpen = useSelector((state: RootState) =>
+    Boolean(state.preview.item),
+  );
 
   const theme = useTheme();
   const isSmall = useMediaQuery(theme.breakpoints.down("lg"));
@@ -69,10 +79,15 @@ export function Home({ onPlayTrack, onPlaySound }: HomeProps) {
         flexDirection: "column",
         gap: 2,
         mt: 4,
-        mb: "248px",
+        mb: previewOpen ? "368px" : "248px",
       }}
     >
-      <Library onPlayTrack={onPlayTrack} onPlaySound={onPlaySound} />
+      <Library
+        onPlayTrack={onPlayTrack}
+        onPlaySound={onPlaySound}
+        onPreviewTrack={onPreviewTrack}
+        onPreviewSound={onPreviewSound}
+      />
       <Card>
         <CardContent>
           <Stack

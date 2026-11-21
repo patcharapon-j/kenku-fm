@@ -2,6 +2,8 @@ import { ipcRenderer } from "electron";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import PCMStream from "./PCMStream.worklet";
+import { PreviewLoadCommand } from "../../types/preview";
+import { PreviewAudioEngine } from "./PreviewAudioEngine";
 
 export type StreamingMode = "lowLatency" | "balanced" | "performance";
 
@@ -53,6 +55,14 @@ const LIMITER_CEILING = 0.891;
 const RESUME_RAMP = 2;
 /** Time constant in seconds used when a gain is changed, to avoid a click */
 const GAIN_RAMP = 0.015;
+/**
+ * Local-only attenuation applied to the live monitor mix while a GM preview is
+ * playing (~-12 dB). Applied downstream of `_pcmStreamNode` so neither Discord
+ * nor the output meter ever sees it.
+ */
+const PREVIEW_DUCK_GAIN = 0.25;
+const PREVIEW_DUCK_ATTACK = 0.06;
+const PREVIEW_DUCK_RELEASE = 0.12;
 /**
  * Loudness the normaliser aims the mix at, in LUFS
  * Around where streaming services land, which is loud enough to sit well in a
@@ -142,6 +152,31 @@ export class AudioCaptureManagerPreload {
   _pcmStreamNode?: AudioWorkletNode;
   /** Gain applied to the local monitoring only, never to the broadcast */
   _monitorGainNode?: GainNode;
+  /**
+   * Local-only ducking gain downstream of `_monitorGainNode`. Attenuates what
+   * the GM hears of the live mix while a preview plays, without ever affecting
+   * the broadcast or level meters.
+   */
+  _monitorDuckGainNode?: GainNode;
+  /** Cached local monitor state so updates arriving before `start()` still apply */
+  _loopback = true;
+  _monitorGain = 1;
+  _monitorDeviceId = "";
+  _duckLiveMonitor = true;
+  _previewPlaying = false;
+  /** GM-only preview engine running on its own AudioContext, isolated from `_pcmStreamNode` */
+  _previewEngine = new PreviewAudioEngine({
+    onState: (state) => {
+      ipcRenderer.send("AUDIO_CAPTURE_PREVIEW_STATE", state);
+    },
+    onPlayingChange: (playing) => {
+      this._previewPlaying = playing;
+      this._applyMonitorDuck();
+    },
+    onWarning: (message) => {
+      this._reportWarning(message);
+    },
+  });
 
   /** Audio DOM element for the current output / local playback */
   _audioOutputElement?: HTMLAudioElement;
@@ -650,13 +685,16 @@ export class AudioCaptureManagerPreload {
 
   /** Set the level of the local monitoring, which the broadcast never hears */
   setMonitorGain(gain: number): void {
+    this._monitorGain = gain;
     if (this._monitorGainNode) {
       this._rampGain(this._monitorGainNode, gain);
     }
   }
 
-  /** Send the local monitoring to a specific output device, or the default one */
+  /** Send the local monitoring and GM previews to a specific output device, or the default one */
   async setMonitorDevice(deviceId: string): Promise<void> {
+    this._monitorDeviceId = deviceId;
+    await this._previewEngine.setMonitorDevice(deviceId);
     const element = this._audioOutputElement;
     if (!element) {
       return;
@@ -686,13 +724,74 @@ export class AudioCaptureManagerPreload {
     node.gain.setTargetAtTime(value, context.currentTime, GAIN_RAMP);
   }
 
+  _targetDuckGain(): number {
+    return this._previewPlaying && this._duckLiveMonitor
+      ? PREVIEW_DUCK_GAIN
+      : 1;
+  }
+
+  /** Smoothly duck or restore only the GM's local monitor of the live mix */
+  _applyMonitorDuck(): void {
+    const node = this._monitorDuckGainNode;
+    if (!node) {
+      return;
+    }
+    const target = this._targetDuckGain();
+    const context = this._audioContext;
+    if (!context) {
+      node.gain.value = target;
+      return;
+    }
+    const timeConstant =
+      target < 1 ? PREVIEW_DUCK_ATTACK : PREVIEW_DUCK_RELEASE;
+    node.gain.setTargetAtTime(target, context.currentTime, timeConstant);
+  }
+
+  previewLoad(command: PreviewLoadCommand): void {
+    this._duckLiveMonitor = Boolean(command.duckLiveMonitor);
+    this._previewEngine.load(command);
+    this._applyMonitorDuck();
+  }
+
+  previewPlay(): void {
+    this._previewEngine.play();
+  }
+
+  previewPause(): void {
+    this._previewEngine.pause();
+  }
+
+  previewStop(): void {
+    this._previewEngine.stop();
+  }
+
+  previewSeek(to: number): void {
+    this._previewEngine.seek(to);
+  }
+
+  previewSetVolume(volume: number): void {
+    this._previewEngine.setVolume(volume);
+  }
+
+  previewSetMuted(muted: boolean): void {
+    this._previewEngine.setMuted(muted);
+  }
+
+  previewSetDuck(enabled: boolean): void {
+    this._duckLiveMonitor = Boolean(enabled);
+    this._applyMonitorDuck();
+  }
+
   /**
    * Toggle the playback of the view audio in the current window
    * @param {boolean} loopback
    */
   setLoopback(loopback: boolean): void {
+    this._loopback = loopback;
     // The main window restores its settings before the capture has started, so
-    // this can arrive before there is anything to monitor
+    // this can arrive before there is anything to monitor.
+    // Only the live loopback element is muted here; GM previews stay audible
+    // on the monitor device even when "This Computer" is unticked.
     if (!this._audioOutputElement) {
       return;
     }
@@ -850,13 +949,22 @@ export class AudioCaptureManagerPreload {
     // Create loopback media element
     const mediaDestination = this._audioContext.createMediaStreamDestination();
     this._monitorGainNode = this._audioContext.createGain();
+    this._monitorGainNode.gain.value = this._monitorGain;
+    this._monitorDuckGainNode = this._audioContext.createGain();
+    this._monitorDuckGainNode.gain.value = this._targetDuckGain();
     // The monitoring hangs off the master bus processor's output so that it
-    // hears exactly what is broadcast, limiter and all
+    // hears exactly what is broadcast, limiter and all, and local preview
+    // ducking sits after the processor so it never touches the broadcast
     this._pcmStreamNode.connect(this._monitorGainNode);
-    this._monitorGainNode.connect(mediaDestination);
+    this._monitorGainNode.connect(this._monitorDuckGainNode);
+    this._monitorDuckGainNode.connect(mediaDestination);
 
     this._audioOutputElement = document.createElement("audio");
     this._audioOutputElement.srcObject = mediaDestination.stream;
+    this._audioOutputElement.muted = !this._loopback;
+    if (this._monitorDeviceId) {
+      void this.setMonitorDevice(this._monitorDeviceId);
+    }
     this._audioOutputElement.onloadedmetadata = () => {
       this._audioOutputElement.play();
     };
